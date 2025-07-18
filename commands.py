@@ -34,5 +34,4 @@ class ChannelConfig(commands.Cog):
         await interaction.response.send_message(f"✅ Buttons posted to {channel.mention}", ephemeral=True)
 
 async def setup(bot):
-    await bot.load_extension("commands")
     await bot.add_cog(ChannelConfig(bot))
