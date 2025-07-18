@@ -1,4 +1,5 @@
 import discord
+from config import channel_config
 
 class SuggestionButtons(discord.ui.View):
     def __init__(self):
@@ -8,28 +9,29 @@ class SuggestionButtons(discord.ui.View):
     async def make_suggestion(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(SuggestionModal())
 
-    @discord.ui.button(label="📂 View My Suggestions", style=discord.ButtonStyle.blurple, custom_id="view_suggestions")
-    async def view_suggestions(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("🛠 Feature coming soon!", ephemeral=True)
 
 class SuggestionModal(discord.ui.Modal, title="Submit Your Suggestion"):
-    suggestion = discord.ui.TextInput(label="Your Suggestion", style=discord.TextStyle.paragraph, required=True)
+    title = discord.ui.TextInput(label="Title", placeholder="Short title", max_length=100)
+    description = discord.ui.TextInput(label="Description", placeholder="Explain your suggestion...", style=discord.TextStyle.paragraph)
 
     async def on_submit(self, interaction: discord.Interaction):
-        from config import channel_config
-        target_id = channel_config.get("main_chat_id")
-        channel = interaction.client.get_channel(target_id)
+        main_channel_id = channel_config.get("main_chat_id")
+        channel = interaction.client.get_channel(main_channel_id)
+
+        if not channel:
+            await interaction.response.send_message("⚠️ Suggestion channel not set or accessible. Run `/setchannels` first.", ephemeral=True)
+            return
 
         embed = discord.Embed(
-            title="New Suggestion",
-            description=self.suggestion.value,
+            title=self.title.value,
+            description=self.description.value,
             color=discord.Color.green()
         )
         embed.set_footer(text=f"Suggested by {interaction.user}", icon_url=interaction.user.avatar.url)
 
-        if channel:
+        try:
             msg = await channel.send("@everyone", embed=embed)
             await msg.add_reaction("👍")
             await interaction.response.send_message("✅ Suggestion submitted!", ephemeral=True)
-        else:
-            await interaction.response.send_message("⚠️ No main suggestion channel set yet.", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Failed to post suggestion.\nError: {str(e)}", ephemeral=True)
