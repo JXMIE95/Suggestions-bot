@@ -2,7 +2,7 @@ from discord import RawReactionActionEvent
 
 SUGGESTION_CHANNEL_ID = 123456789012345678  # replace this
 STAFF_CHANNEL_ID = 987654321098765432      # replace this
-LIKE_THRESHOLD = 1
+LIKE_THRESHOLD = 2
 LIKE_EMOJI = "👍"
 posted_messages = set()
 
