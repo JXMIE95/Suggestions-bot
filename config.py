@@ -5,3 +5,4 @@ channel_config = {
 }
 
 LIKE_THRESHOLD = 10
+posted_messages = set()

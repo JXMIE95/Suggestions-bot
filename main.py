@@ -1,19 +1,27 @@
 import discord
 from discord.ext import commands
-import asyncio
+from views import SuggestionButtons
+from handlers import setup_handlers
 import os
 
-intents = discord.Intents.all()
+intents = discord.Intents.default()
+intents.message_content = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
-    await bot.tree.sync()
+    bot.add_view(SuggestionButtons())
+    await setup_handlers(bot)
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} commands.")
+    except Exception as e:
+        print(f"Sync failed: {e}")
 
-async def load_extensions():
+async def setup_extensions():
     await bot.load_extension("commands")
 
-asyncio.run(load_extensions())
-
+bot.loop.create_task(setup_extensions())
 bot.run(os.getenv("DISCORD_TOKEN"))

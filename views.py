@@ -9,7 +9,6 @@ class SuggestionButtons(discord.ui.View):
     async def make_suggestion(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(SuggestionModal())
 
-
 class SuggestionModal(discord.ui.Modal, title="Submit Your Suggestion"):
     title = discord.ui.TextInput(label="Title", placeholder="Short title", max_length=100)
     description = discord.ui.TextInput(label="Description", placeholder="Explain your suggestion...", style=discord.TextStyle.paragraph)
@@ -35,3 +34,21 @@ class SuggestionModal(discord.ui.Modal, title="Submit Your Suggestion"):
             await interaction.response.send_message("✅ Suggestion submitted!", ephemeral=True)
         except Exception as e:
             await interaction.response.send_message(f"❌ Failed to post suggestion.\nError: {str(e)}", ephemeral=True)
+
+class StaffReviewButtons(discord.ui.View):
+    def __init__(self, embed):
+        super().__init__(timeout=None)
+        self.embed = embed
+
+    @discord.ui.button(label="✅ Approve", style=discord.ButtonStyle.success)
+    async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
+        announcement_channel_id = channel_config.get("announcement_channel_id")
+        announcement_channel = interaction.client.get_channel(announcement_channel_id)
+
+        if not announcement_channel:
+            await interaction.response.send_message("⚠️ Announcement channel not set or accessible.", ephemeral=True)
+            return
+
+        await announcement_channel.send("📢 Approved Suggestion:", embed=self.embed)
+        await interaction.response.send_message("✅ Suggestion approved and announced.", ephemeral=True)
+        await interaction.message.edit(view=None)
