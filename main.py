@@ -2,9 +2,6 @@ import os
 import discord
 from discord.ext import commands
 from discord import app_commands
-from dotenv import load_dotenv
-
-load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID"))
@@ -19,7 +16,6 @@ class SuggestionBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
-        # Copy and sync global commands to your server
         guild = discord.Object(id=GUILD_ID)
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
