@@ -5,8 +5,8 @@ import os
 from dotenv import load_dotenv
 import logging
 from config import Config
-from commands import setup_commands
-from handlers import setup_handlers
+from bot.commands import setup_commands
+from bot.handlers import setup_handlers
 
 # Load environment variables
 load_dotenv()
