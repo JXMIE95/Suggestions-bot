@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from config import channel_config
+from views import SuggestionButtons
 
 class ChannelConfig(commands.Cog):
     def __init__(self, bot):
@@ -26,5 +27,12 @@ class ChannelConfig(commands.Cog):
             ephemeral=True
         )
 
+    @app_commands.command(name="setup_buttons", description="Post the suggestion buttons in a channel")
+    @app_commands.describe(channel="The channel where the buttons should be posted")
+    async def setup_buttons(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        await channel.send("📩 Suggestion Panel", view=SuggestionButtons())
+        await interaction.response.send_message(f"✅ Buttons posted to {channel.mention}", ephemeral=True)
+
 async def setup(bot):
+    await bot.load_extension("commands")
     await bot.add_cog(ChannelConfig(bot))
