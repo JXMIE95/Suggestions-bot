@@ -1,84 +1,18 @@
 import discord
 from discord.ext import commands
 import asyncio
-import os
-from dotenv import load_dotenv
-import logging
-from config import Config
-from bot.commands import setup_commands
-from bot.handlers import setup_handlers
 
-# Load environment variables
-load_dotenv()
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('bot.log'),
-        logging.StreamHandler()
-    ]
-)
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user}")
+    await bot.tree.sync()
 
-logger = logging.getLogger(__name__)
+async def load_extensions():
+    await bot.load_extension("commands")
 
-class SuggestionBot(commands.Bot):
-    def __init__(self):
-        intents = discord.Intents.default()
-        intents.reactions = True
-        intents.guilds = True
-        
-        super().__init__(
-            command_prefix='!',
-            intents=intents,
-            help_command=None
-        )
-        
-        self.config = Config()
-        
-    async def setup_hook(self):
-        """Setup hook called when bot is starting"""
-        logger.info("Setting up bot...")
-        
-        # Setup commands and handlers
-        await setup_commands(self)
-        setup_handlers(self)
-        
-        # Sync slash commands
-        try:
-            synced = await self.tree.sync()
-            logger.info(f"Synced {len(synced)} command(s)")
-        except Exception as e:
-            logger.error(f"Failed to sync commands: {e}")
-    
-    async def on_ready(self):
-        """Called when bot is ready"""
-        logger.info(f'{self.user} has connected to Discord!')
-        logger.info(f'Bot is in {len(self.guilds)} guilds')
-        
-        # Set bot status
-        await self.change_presence(
-            activity=discord.Activity(
-                type=discord.ActivityType.listening, 
-                name="your suggestions"
-            )
-        )
-    
-    async def on_error(self, event, *args, **kwargs):
-        """Handle errors"""
-        logger.error(f"Error in {event}: {args}", exc_info=True)
+asyncio.run(load_extensions())
 
-def main():
-    """Main function to run the bot"""
-    bot = SuggestionBot()
-    
-    try:
-        bot.run(bot.config.DISCORD_TOKEN)
-    except discord.LoginFailure:
-        logger.error("Invalid Discord token provided")
-    except Exception as e:
-        logger.error(f"Failed to start bot: {e}")
-
-if __name__ == "__main__":
-    main()
+bot.run("YOUR_TOKEN")
