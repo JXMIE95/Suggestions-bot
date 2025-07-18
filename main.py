@@ -1,19 +1,20 @@
 import os
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
+from dotenv import load_dotenv
+from suggestion import SuggestionView
 
+load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID"))
 
 class SuggestionBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
-        intents.messages = True
-        intents.guilds = True
         intents.message_content = True
-
         super().__init__(command_prefix="!", intents=intents)
+        self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self):
         guild = discord.Object(id=GUILD_ID)
@@ -25,11 +26,10 @@ bot = SuggestionBot()
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
-    print("------")
 
-# Example slash command
-@bot.tree.command(name="ping", description="Simple test command")
-async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message("Pong!")
+@bot.tree.command(name="setup_buttons", description="Set up suggestion buttons in this channel.")
+@app_commands.guilds(discord.Object(id=GUILD_ID))
+async def setup_buttons(interaction: discord.Interaction):
+    await interaction.response.send_message("✅ Buttons added!", view=SuggestionView(), ephemeral=False)
 
 bot.run(TOKEN)
