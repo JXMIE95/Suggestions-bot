@@ -1,0 +1,12 @@
+{
+    "channels": {
+        "suggestions": null,
+        "main": null,
+        "staff": null,
+        "announcement": null
+    },
+    "roles": {
+        "staff": null,
+        "announce": null
+    }
+}
