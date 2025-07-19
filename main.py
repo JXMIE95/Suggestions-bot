@@ -1,63 +1,57 @@
-import os
-import discord
+mport discord
 from discord.ext import commands, tasks
 from discord import app_commands
+import os
 from dotenv import load_dotenv
 import asyncio
 from datetime import datetime, timedelta
 
 load_dotenv()
-
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
 intents.messages = True
 intents.guilds = True
-intents.message_content = True
 intents.reactions = True
+intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
 
-# In-memory storage
 config = {
-    "suggestions_channel": None,
+    "suggestion_channel": None,
     "main_channel": None,
     "staff_channel": None,
     "announcement_channel": None,
     "staff_role": None,
-    "main_role": None,
     "announcement_role": None,
+    "main_role": None,
 }
 
-suggestions = {}  # message_id: {"author_id": x, "upvotes": 0, "poll_started": False}
-polls = {}        # staff_msg_id: {"yes": 0, "no": 0, "votes": set(), "deadline": datetime, "original_msg": discord.Message}
+polls = {}
 
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
     try:
         synced = await tree.sync()
-        print(f"✅ Synced {len(synced)} commands")
+        print(f"Synced {len(synced)} commands.")
     except Exception as e:
-        print("❌ Failed to sync commands:", e)
+        print(f"Failed to sync commands: {e}")
 
-    if not check_poll_timeouts.is_running():
-        check_poll_timeouts.start()
-
-@tree.command(name="setup", description="Configure bot channels and roles")
+@tree.command(name="setup", description="Set up the suggestion system")
 @app_commands.describe(
-    suggestions_channel="Channel for suggestions",
-    main_channel="Main chat channel",
-    staff_channel="Staff review channel",
-    announcement_channel="Final announcement channel",
-    staff_role="Staff role to mention in polls",
-    main_role="Main role to mention for suggestions",
-    announcement_role="Role to mention in announcements"
+    suggestion_channel="Channel for suggestions",
+    main_channel="Channel for main announcements",
+    staff_channel="Channel for staff polls",
+    announcement_channel="Channel for final announcements",
+    staff_role="Role for staff (Diplomats)",
+    main_role="Role to mention in main channel",
+    announcement_role="Role to mention in announcement channel"
 )
 async def setup(
     interaction: discord.Interaction,
-    suggestions_channel: discord.TextChannel,
+    suggestion_channel: discord.TextChannel,
     main_channel: discord.TextChannel,
     staff_channel: discord.TextChannel,
     announcement_channel: discord.TextChannel,
@@ -65,7 +59,7 @@ async def setup(
     main_role: discord.Role = None,
     announcement_role: discord.Role = None
 ):
-    config["suggestions_channel"] = suggestions_channel.id
+    config["suggestion_channel"] = suggestion_channel.id
     config["main_channel"] = main_channel.id
     config["staff_channel"] = staff_channel.id
     config["announcement_channel"] = announcement_channel.id
@@ -73,143 +67,101 @@ async def setup(
     config["main_role"] = main_role.id if main_role else None
     config["announcement_role"] = announcement_role.id if announcement_role else None
 
-    view = discord.ui.View()
-    view.add_item(MakeSuggestion())
-    view.add_item(ViewSuggestions())
-    await suggestions_channel.send("📢 Use the buttons below to interact with the suggestion system:", view=view)
+    await interaction.response.send_message("✅ Setup complete!", ephemeral=True)
 
-    await interaction.response.send_message("✅ Channels and roles configured!", ephemeral=True)
-
-class MakeSuggestion(discord.ui.Button):
-    def __init__(self):
-        super().__init__(label="📨 Make a Suggestion", style=discord.ButtonStyle.primary)
-
-    async def callback(self, interaction: discord.Interaction):
-        modal = SuggestionModal()
-        await interaction.response.send_modal(modal)
-
-class ViewSuggestions(discord.ui.Button):
-    def __init__(self):
-        super().__init__(label="📂 View My Suggestions", style=discord.ButtonStyle.secondary)
-
-    async def callback(self, interaction: discord.Interaction):
-        user_suggestions = [
-            f"- {sugg['content']}" for sugg in suggestions.values() if sugg['author_id'] == interaction.user.id
-        ]
-        content = "\n".join(user_suggestions) if user_suggestions else "You haven't made any suggestions yet."
-        await interaction.response.send_message(content, ephemeral=True)
-
-class SuggestionModal(discord.ui.Modal, title="Submit Suggestion"):
-    title_input = discord.ui.TextInput(label="Title", max_length=100)
-    desc_input = discord.ui.TextInput(label="Description", style=discord.TextStyle.paragraph, max_length=400)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        main_channel = bot.get_channel(config["main_channel"])
-        role_mention = f"<@&{config['main_role']}>" if config["main_role"] else ""
-
-        embed = discord.Embed(title=self.title_input.value, description=self.desc_input.value, color=0x00ff00)
-        embed.set_footer(text=f"Suggested by {interaction.user}")
-
-        msg = await main_channel.send(content=role_mention, embed=embed)
-        await msg.add_reaction("👍")
-
-        suggestions[msg.id] = {
-            "author_id": interaction.user.id,
-            "upvotes": 0,
-            "poll_started": False,
-            "content": f"{self.title_input.value}: {self.desc_input.value}"
-        }
-
-        await interaction.response.send_message("✅ Suggestion submitted!", ephemeral=True)
-
-@bot.event
-async def on_reaction_add(reaction, user):
-    if user.bot:
-        return
-
-    if reaction.message.id not in suggestions:
-        return
-
-    if str(reaction.emoji) == "👍":
-        suggestions[reaction.message.id]["upvotes"] += 1
-        if suggestions[reaction.message.id]["upvotes"] >= 1 and not suggestions[reaction.message.id]["poll_started"]:
-            await start_staff_poll(reaction.message)
-
-async def start_staff_poll(message):
-    suggestions[message.id]["poll_started"] = True
-    staff_channel = bot.get_channel(config["staff_channel"])
-    staff_role = f"<@&{config['staff_role']}>" if config["staff_role"] else ""
-
-    embed = discord.Embed(
-        title="📊 Staff Poll",
-        description=message.embeds[0].description,
-        color=0xffc107
-    )
-    embed.set_footer(text="React with ✅ or ❌ to vote. 24-hour timer.")
-
-    poll_msg = await staff_channel.send(content=staff_role, embed=embed)
-    await poll_msg.add_reaction("✅")
-    await poll_msg.add_reaction("❌")
-
-    polls[poll_msg.id] = {
-        "yes": 0,
-        "no": 0,
-        "votes": set(),
-        "deadline": datetime.utcnow() + timedelta(hours=24),
-        "original_msg": poll_msg,
-        "original_embed": message.embeds[0]
-    }
+@tree.command(name="suggest", description="Make a suggestion")
+@app_commands.describe(title="Title of the suggestion", description="Describe your suggestion")
+async def suggest(interaction: discord.Interaction, title: str, description: str):
+    channel = bot.get_channel(config["suggestion_channel"])
+    embed = discord.Embed(title=title, description=description, color=discord.Color.blurple())
+    embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
+    embed.timestamp = datetime.utcnow()
+    message = await channel.send(embed=embed)
+    await message.add_reaction("👍")
+    await message.add_reaction("👎")
+    await interaction.response.send_message("✅ Suggestion sent!", ephemeral=True)
 
 @bot.event
 async def on_raw_reaction_add(payload):
-    if payload.message_id not in polls or payload.user_id == bot.user.id:
+    if payload.channel_id != config["staff_channel"]:
         return
 
-    guild = bot.get_guild(payload.guild_id)
-    member = guild.get_member(payload.user_id)
-    if not member:
-        return
+    if payload.message_id in polls:
+        poll = polls[payload.message_id]
+        guild = bot.get_guild(payload.guild_id)
+        member = guild.get_member(payload.user_id)
 
-    poll = polls[payload.message_id]
-    if payload.user_id in poll["votes"]:
-        return  # already voted
+        if not member or member.bot:
+            return
 
-    if str(payload.emoji.name) == "✅":
-        poll["yes"] += 1
-    elif str(payload.emoji.name) == "❌":
-        poll["no"] += 1
-    else:
-        return
+        if payload.emoji.name == "✅":
+            poll["yes"] += 1
+            poll["votes"].add(payload.user_id)
+        elif payload.emoji.name == "❌":
+            poll["no"] += 1
+            poll["votes"].add(payload.user_id)
 
-    poll["votes"].add(payload.user_id)
+        diplomat_role = guild.get_role(config["staff_role"])
+        diplomat_members = [m.id for m in diplomat_role.members if not m.bot]
 
-    staff_role = guild.get_role(config["staff_role"])
-    if staff_role and all(member.id in poll["votes"] for member in staff_role.members if not member.bot):
-        await send_poll_result(payload.message_id, guild)
-
-@tasks.loop(minutes=1)
-async def check_poll_timeouts():
-    now = datetime.utcnow()
-    to_remove = []
-    for poll_id, data in polls.items():
-        if now >= data["deadline"]:
-            guild = bot.get_guild(data["original_msg"].guild.id)
-            await send_poll_result(poll_id, guild)
-            to_remove.append(poll_id)
-    for poll_id in to_remove:
-        del polls[poll_id]
+        if set(diplomat_members).issubset(poll["votes"]):
+            await send_poll_result(payload.message_id, guild)
+            del polls[payload.message_id]
 
 async def send_poll_result(poll_id, guild):
     poll = polls[poll_id]
     announcement_channel = guild.get_channel(config["announcement_channel"])
     announcement_role = f"<@&{config['announcement_role']}>" if config["announcement_role"] else ""
 
-    result_text = "✅ Approved!" if poll["yes"] > poll["no"] else "❌ Rejected!"
+    passed = poll["yes"] > poll["no"]
+    result_text = (
+        "✅ The following suggestion has been passed by the Diplomats"
+        if passed else
+        "❌ Suggestion Rejected by Diplomats"
+    )
+
+    color = 0x2ecc71 if passed else 0xe74c3c
+
     embed = discord.Embed(
         title="📢 Poll Result",
-        description=f"{poll['original_embed'].description}\n\n**Result:** {result_text}",
-        color=0x3498db if poll["yes"] > poll["no"] else 0xe74c3c
+        description=f"{poll['original_embed'].description}
+
+**{result_text}**",
+        color=color
     )
     await announcement_channel.send(content=announcement_role, embed=embed)
 
+async def start_staff_poll(message):
+    polls[message.id] = {
+        "yes": 0,
+        "no": 0,
+        "votes": set(),
+        "original_embed": message.embeds[0],
+        "start_time": datetime.utcnow()
+    }
+    await message.add_reaction("✅")
+    await message.add_reaction("❌")
+    await message.channel.send("🗳️ Diplomat Poll started. Vote now!")
+
+@tasks.loop(minutes=1)
+async def check_poll_timeouts():
+    now = datetime.utcnow()
+    expired_polls = [mid for mid, poll in polls.items() if now - poll["start_time"] >= timedelta(hours=24)]
+    for mid in expired_polls:
+        guild = bot.guilds[0]
+        await send_poll_result(mid, guild)
+        del polls[mid]
+
+@bot.event
+async def on_message(message):
+    if message.channel.id == config["suggestion_channel"] and message.author != bot.user:
+        staff_channel = bot.get_channel(config["staff_channel"])
+        staff_role = f"<@&{config['staff_role']}>" if config["staff_role"] else ""
+        embed = discord.Embed(title="New Suggestion", description=message.content, color=discord.Color.orange())
+        embed.set_author(name=message.author.display_name, icon_url=message.author.avatar.url if message.author.avatar else None)
+        poll_msg = await staff_channel.send(content=staff_role, embed=embed)
+        await start_staff_poll(poll_msg)
+    await bot.process_commands(message)
+
+check_poll_timeouts.start()
 bot.run(TOKEN)
