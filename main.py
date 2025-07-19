@@ -1,124 +1,178 @@
-import os
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
-from datetime import datetime, timedelta
+import os
+from dotenv import load_dotenv
 import asyncio
+from datetime import datetime, timedelta
+
+load_dotenv()
+TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.reactions = True
+intents.guilds = True
+intents.members = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
+tree = bot.tree
 
-TOKEN = os.getenv("DISCORD_TOKEN")
-GUILD_ID = os.getenv("GUILD_ID")
-
-channels = {
-    "suggestions": None,
-    "main": None,
-    "staff": None,
-    "announcement": None
+# Global settings
+CONFIG = {
+    "suggestion_channel": None,
+    "main_channel": None,
+    "staff_channel": None,
+    "announcement_channel": None,
+    "main_role": None,
+    "staff_role": None,
+    "announcement_role": None,
 }
 
-roles = {
-    "diplomat": None,
-    "main": None,
-    "announcement": None
-}
+polls = {}
 
-active_polls = {}
+class SuggestionModal(discord.ui.Modal, title="Submit a Suggestion"):
+    title_input = discord.ui.TextInput(label="Suggestion Title", required=True, max_length=100)
+    description_input = discord.ui.TextInput(label="Suggestion Description", required=True, style=discord.TextStyle.paragraph)
 
-@bot.event
-async def on_ready():
-    print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
-    await bot.tree.sync()
-    check_poll_timeouts.start()
+    def __init__(self, user):
+        super().__init__()
+        self.user = user
 
-@bot.tree.command(name="setup", description="Set up suggestion system channels and roles.")
+    async def on_submit(self, interaction: discord.Interaction):
+        embed = discord.Embed(title=self.title_input.value, description=self.description_input.value, color=discord.Color.blurple())
+        embed.set_footer(text=f"Suggested by {self.user.name}")
+        embed.timestamp = datetime.utcnow()
+
+        main_channel = bot.get_channel(CONFIG["main_channel"])
+        main_role = interaction.guild.get_role(CONFIG["main_role"])
+
+        msg = await main_channel.send(content=main_role.mention if main_role else "", embed=embed)
+        await msg.add_reaction("👍")
+
+        polls[msg.id] = {
+            "original_embed": embed,
+            "thumbs_up": 0,
+            "suggestion_msg": msg,
+            "votes": {},
+            "start_time": datetime.utcnow(),
+            "resolved": False
+        }
+
+        await interaction.response.send_message("Your suggestion has been submitted!", ephemeral=True)
+
+class SuggestionButtons(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Make a Suggestion", style=discord.ButtonStyle.green, custom_id="make_suggestion")
+    async def make_suggestion(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(SuggestionModal(user=interaction.user))
+
+@tree.command(name="setup", description="Configure bot channels and roles.")
 @app_commands.describe(
-    suggestions_channel="Channel where users submit suggestions.",
-    main_channel="Channel where suggestions are posted for voting.",
-    staff_channel="Channel where staff polls are held.",
-    announcement_channel="Channel for final announcements.",
-    diplomat_role="Role that votes on suggestions.",
-    main_role="Role to mention in main channel.",
-    announcement_role="Role to mention in announcements."
+    suggestion_channel="Channel where suggestion buttons appear",
+    main_channel="Channel where suggestions are posted",
+    staff_channel="Channel where staff votes",
+    announcement_channel="Channel where results go",
+    main_role="Role to ping on suggestions",
+    staff_role="Role to vote on suggestions",
+    announcement_role="Role to ping in announcements"
 )
-async def setup(
-    interaction: discord.Interaction,
-    suggestions_channel: discord.TextChannel,
+async def setup(interaction: discord.Interaction,
+    suggestion_channel: discord.TextChannel,
     main_channel: discord.TextChannel,
     staff_channel: discord.TextChannel,
     announcement_channel: discord.TextChannel,
-    diplomat_role: discord.Role = None,
     main_role: discord.Role = None,
+    staff_role: discord.Role = None,
     announcement_role: discord.Role = None
 ):
-    channels["suggestions"] = suggestions_channel.id
-    channels["main"] = main_channel.id
-    channels["staff"] = staff_channel.id
-    channels["announcement"] = announcement_channel.id
+    CONFIG.update({
+        "suggestion_channel": suggestion_channel.id,
+        "main_channel": main_channel.id,
+        "staff_channel": staff_channel.id,
+        "announcement_channel": announcement_channel.id,
+        "main_role": main_role.id if main_role else None,
+        "staff_role": staff_role.id if staff_role else None,
+        "announcement_role": announcement_role.id if announcement_role else None,
+    })
 
-    roles["diplomat"] = diplomat_role.id if diplomat_role else None
-    roles["main"] = main_role.id if main_role else None
-    roles["announcement"] = announcement_role.id if announcement_role else None
-
+    await suggestion_channel.send("Use the button below to submit suggestions:", view=SuggestionButtons())
     await interaction.response.send_message("✅ Setup complete.", ephemeral=True)
 
-@bot.tree.command(name="suggest", description="Submit a suggestion.")
-@app_commands.describe(title="Title of the suggestion", description="Describe your suggestion")
-async def suggest(interaction: discord.Interaction, title: str, description: str):
-    if channels["main"] is None:
-        await interaction.response.send_message("❌ Suggestion system is not fully set up.", ephemeral=True)
+@bot.event
+async def on_raw_reaction_add(payload):
+    if payload.user_id == bot.user.id:
         return
 
-    embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
-    embed.set_footer(text=f"Suggested by {interaction.user.name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
+    msg_id = payload.message_id
+    emoji = str(payload.emoji)
 
-    main_channel = bot.get_channel(channels["main"])
-    mention = f"<@&{roles['main']}>" if roles["main"] else ""
-    message = await main_channel.send(content=mention, embed=embed)
-    await message.add_reaction("👍")
-    await message.add_reaction("👎")
+    if msg_id in polls and emoji == "👍":
+        polls[msg_id]["thumbs_up"] += 1
 
-    await interaction.response.send_message("✅ Your suggestion has been submitted!", ephemeral=True)
+        if polls[msg_id]["thumbs_up"] >= 10 and not polls[msg_id]["resolved"]:
+            await send_to_staff_poll(msg_id)
 
-    active_polls[message.id] = {
-        "message": message,
-        "original_embed": embed,
-        "author_id": interaction.user.id,
-        "start_time": datetime.utcnow(),
-        "voters": set()
-    }
+async def send_to_staff_poll(msg_id):
+    poll = polls[msg_id]
+    poll["resolved"] = True
+
+    staff_channel = bot.get_channel(CONFIG["staff_channel"])
+    staff_role = staff_channel.guild.get_role(CONFIG["staff_role"])
+
+    embed = discord.Embed(
+        title=f"📊 Diplomat Poll: {poll['original_embed'].title}",
+        description=f"{poll['original_embed'].description}",
+        color=discord.Color.orange()
+    )
+    embed.set_footer(text="React with ✅ or ❌ — 24h timer")
+
+    msg = await staff_channel.send(content=staff_role.mention if staff_role else "", embed=embed)
+    await msg.add_reaction("✅")
+    await msg.add_reaction("❌")
+
+    poll["staff_msg"] = msg
+    poll["votes"] = {}
+    poll["start_time"] = datetime.utcnow()
 
 @tasks.loop(seconds=60)
 async def check_poll_timeouts():
-    now = datetime.utcnow()
-    to_remove = []
+    for poll in list(polls.values()):
+        if "staff_msg" not in poll or poll.get("finished"):
+            continue
 
-    for msg_id, poll in list(active_polls.items()):
-        if now - poll["start_time"] > timedelta(hours=24):
-            staff_channel = bot.get_channel(channels["staff"])
-            diplomat_role = f"<@&{roles['diplomat']}>" if roles["diplomat"] else ""
+        msg = poll["staff_msg"]
+        staff_role = msg.guild.get_role(CONFIG["staff_role"])
+        announcement_channel = bot.get_channel(CONFIG["announcement_channel"])
+        announcement_role = msg.guild.get_role(CONFIG["announcement_role"])
 
-            poll_embed = discord.Embed(
-                title="Diplomat Poll",
-                description=f"{poll['original_embed'].description}",
-                color=discord.Color.gold()
+        msg = await msg.channel.fetch_message(msg.id)
+        yes_votes = [user async for user in msg.reactions[0].users() if not user.bot]
+        no_votes = [user async for user in msg.reactions[1].users() if not user.bot]
+
+        all_voted = False
+        if staff_role:
+            total_staff = [m for m in staff_role.members if not m.bot]
+            all_voted = all(m in yes_votes + no_votes for m in total_staff)
+
+        timed_out = datetime.utcnow() - poll["start_time"] > timedelta(hours=24)
+
+        if all_voted or timed_out:
+            passed = len(yes_votes) > len(no_votes)
+            embed = discord.Embed(
+                title="✅ Suggestion Passed by Diplomats" if passed else "❌ Suggestion Rejected by Diplomats",
+                description=poll["original_embed"].description,
+                color=discord.Color.green() if passed else discord.Color.red()
             )
-            poll_embed.set_footer(text=poll['original_embed'].footer.text)
+            await announcement_channel.send(content=announcement_role.mention if announcement_role else "", embed=embed)
+            poll["finished"] = True
 
-            poll_message = await staff_channel.send(content=diplomat_role, embed=poll_embed)
-            await poll_message.add_reaction("✅")
-            await poll_message.add_reaction("❌")
-
-            poll["poll_message_id"] = poll_message.id
-            poll["poll_channel_id"] = staff_channel.id
-            poll["poll_start_time"] = now
-            poll["voted_users"] = set()
-
-            to_remove.append(msg_id)
-
-    for msg_id in to_remove:
-        del active_polls[msg_id]
+@bot.event
+async def on_ready():
+    await tree.sync()
+    print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
+    check_poll_timeouts.start()
 
 bot.run(TOKEN)
