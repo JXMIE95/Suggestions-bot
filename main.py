@@ -1,10 +1,10 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 from discord import app_commands
 import os
 import asyncio
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
+from datetime import datetime
 
 load_dotenv()
 
@@ -18,19 +18,20 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
 
-# In-memory config (replace with database if needed)
+# In-memory config
 config = {
     "suggestion_channel": None,
     "main_channel": None,
     "staff_channel": None,
     "announcement_channel": None,
     "staff_role": None,
+    "main_role": None,
     "announcement_role": None
 }
 
 SUGGESTIONS = {}
 LIKE_THRESHOLD = 10
-POLL_DURATION = 60 * 60 * 24  # 24 hours in seconds
+POLL_DURATION = 60 * 60 * 24  # 24 hours
 
 class SuggestionModal(discord.ui.Modal, title="Create a Suggestion"):
     title_input = discord.ui.TextInput(label="Title", placeholder="Suggestion Title", max_length=100)
@@ -38,6 +39,8 @@ class SuggestionModal(discord.ui.Modal, title="Create a Suggestion"):
 
     async def on_submit(self, interaction: discord.Interaction):
         main_channel_id = config.get("main_channel")
+        main_role_id = config.get("main_role")
+
         if not main_channel_id:
             await interaction.response.send_message("Main channel not set.", ephemeral=True)
             return
@@ -55,7 +58,8 @@ class SuggestionModal(discord.ui.Modal, title="Create a Suggestion"):
         )
         embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.display_avatar)
 
-        message = await main_channel.send(content="@everyone New Suggestion!", embed=embed)
+        mention = f"<@&{main_role_id}>" if main_role_id else "@everyone"
+        message = await main_channel.send(content=f"{mention} New Suggestion!", embed=embed)
         await message.add_reaction("👍")
 
         SUGGESTIONS[message.id] = {
@@ -68,46 +72,48 @@ class SuggestionModal(discord.ui.Modal, title="Create a Suggestion"):
 
         await interaction.response.send_message("✅ Suggestion sent to main channel!", ephemeral=True)
 
-@tree.command(name="setup_channels", description="Set the required channel and role IDs")
+@tree.command(name="setup", description="Set the channels and optional roles for the bot")
 @app_commands.describe(
-    suggestion_channel="Channel for suggestion buttons",
-    main_channel="Channel where suggestions are posted",
-    staff_channel="Channel for staff to vote on suggestions",
-    announcement_channel="Channel to post results",
-    staff_role="Role to mention in staff polls",
-    announcement_role="Role to mention in announcement"
+    suggestion_channel="Channel where the suggestion buttons are posted",
+    main_channel="Channel where user suggestions are posted",
+    staff_channel="Channel where staff vote on approved suggestions",
+    announcement_channel="Channel where final results are posted",
+    staff_role="Role to notify for staff polls (optional)",
+    main_role="Role to notify for user suggestions (optional)",
+    announcement_role="Role to notify in the announcement channel (optional)"
 )
-async def setup_channels(
+async def setup(
     interaction: discord.Interaction,
     suggestion_channel: discord.TextChannel,
     main_channel: discord.TextChannel,
     staff_channel: discord.TextChannel,
     announcement_channel: discord.TextChannel,
-    staff_role: discord.Role,
-    announcement_role: discord.Role
+    staff_role: discord.Role = None,
+    main_role: discord.Role = None,
+    announcement_role: discord.Role = None
 ):
     config["suggestion_channel"] = suggestion_channel.id
     config["main_channel"] = main_channel.id
     config["staff_channel"] = staff_channel.id
     config["announcement_channel"] = announcement_channel.id
-    config["staff_role"] = staff_role.id
-    config["announcement_role"] = announcement_role.id
+    config["staff_role"] = staff_role.id if staff_role else None
+    config["main_role"] = main_role.id if main_role else None
+    config["announcement_role"] = announcement_role.id if announcement_role else None
 
-    await interaction.response.send_message("✅ Channels and roles configured!", ephemeral=True)
+    await interaction.response.send_message("✅ Setup completed!", ephemeral=True)
 
 class SuggestionButtons(discord.ui.View):
     @discord.ui.button(label="Make a Suggestion", style=discord.ButtonStyle.primary)
-    async def suggest(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def make_suggestion(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(SuggestionModal())
 
     @discord.ui.button(label="View My Suggestions", style=discord.ButtonStyle.secondary)
     async def view_suggestions(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Placeholder: You can implement this to fetch user's suggestions from storage
-        await interaction.response.send_message("🔍 This feature is under development.", ephemeral=True)
+        await interaction.response.send_message("🔍 Viewing suggestions is coming soon!", ephemeral=True)
 
 @tree.command(name="post_buttons", description="Post the Suggestion buttons")
 async def post_buttons(interaction: discord.Interaction):
-    await interaction.response.send_message("📝 Suggestion panel", view=SuggestionButtons())
+    await interaction.response.send_message("📝 Suggestion Panel", view=SuggestionButtons())
 
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -123,7 +129,7 @@ async def on_raw_reaction_add(payload):
     if suggestion["upvotes"] == LIKE_THRESHOLD:
         guild = bot.get_guild(payload.guild_id)
         staff_channel = bot.get_channel(config["staff_channel"])
-        staff_role = guild.get_role(config["staff_role"])
+        staff_role = guild.get_role(config["staff_role"]) if config["staff_role"] else None
 
         embed = discord.Embed(
             title=f"Staff Review: {suggestion['title']}",
@@ -133,34 +139,38 @@ async def on_raw_reaction_add(payload):
         )
         embed.set_footer(text="Vote within 24 hours (👍 = Yes, 👎 = No)")
 
-        poll_message = await staff_channel.send(content=f"{staff_role.mention} Please vote:", embed=embed)
-        await poll_message.add_reaction("👍")
-        await poll_message.add_reaction("👎")
+        mention = staff_role.mention if staff_role else ""
+        poll_msg = await staff_channel.send(content=mention, embed=embed)
+        await poll_msg.add_reaction("👍")
+        await poll_msg.add_reaction("👎")
 
-        asyncio.create_task(collect_poll_results(poll_message, suggestion))
+        asyncio.create_task(handle_poll_result(poll_msg, suggestion))
 
-async def collect_poll_results(message, suggestion):
+async def handle_poll_result(message, suggestion):
     await asyncio.sleep(POLL_DURATION)
 
     message = await message.channel.fetch_message(message.id)
-    votes = {"yes": 0, "no": 0}
+    yes_votes = 0
+    no_votes = 0
+
     for reaction in message.reactions:
         if str(reaction.emoji) == "👍":
-            votes["yes"] = reaction.count - 1
+            yes_votes = reaction.count - 1
         elif str(reaction.emoji) == "👎":
-            votes["no"] = reaction.count - 1
+            no_votes = reaction.count - 1
 
-    result = "✅ Approved!" if votes["yes"] > votes["no"] else "❌ Rejected!"
-    announce_channel = bot.get_channel(config["announcement_channel"])
-    mention_role = bot.get_guild(message.guild.id).get_role(config["announcement_role"])
+    result = "✅ Approved" if yes_votes > no_votes else "❌ Rejected"
+
+    announcement_channel = bot.get_channel(config["announcement_channel"])
+    role_mention = f"<@&{config['announcement_role']}>" if config["announcement_role"] else ""
 
     embed = discord.Embed(
         title=f"Suggestion Result: {suggestion['title']}",
-        description=f"**{result}**\n👍 {votes['yes']} | 👎 {votes['no']}",
+        description=f"**{result}**\n👍 {yes_votes} | 👎 {no_votes}",
         color=discord.Color.gold()
     )
 
-    await announce_channel.send(content=f"{mention_role.mention}", embed=embed)
+    await announcement_channel.send(content=role_mention, embed=embed)
 
 @bot.event
 async def on_ready():
