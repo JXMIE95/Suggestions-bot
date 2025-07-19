@@ -112,7 +112,7 @@ async def on_raw_reaction_add(payload):
     if msg_id in polls and emoji == "👍":
         polls[msg_id]["thumbs_up"] += 1
 
-        if polls[msg_id]["thumbs_up"] >= 10 and not polls[msg_id]["resolved"]:
+        if polls[msg_id]["thumbs_up"] >= 1 and not polls[msg_id]["resolved"]:
             await send_to_staff_poll(msg_id)
 
 async def send_to_staff_poll(msg_id):
