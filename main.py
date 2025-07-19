@@ -132,7 +132,7 @@ async def on_reaction_add(reaction, user):
 
     if str(reaction.emoji) == "👍":
         suggestions[reaction.message.id]["upvotes"] += 1
-        if suggestions[reaction.message.id]["upvotes"] >= 10 and not suggestions[reaction.message.id]["poll_started"]:
+        if suggestions[reaction.message.id]["upvotes"] >= 1 and not suggestions[reaction.message.id]["poll_started"]:
             await start_staff_poll(reaction.message)
 
 async def start_staff_poll(message):
