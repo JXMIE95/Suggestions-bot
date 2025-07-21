@@ -171,23 +171,17 @@ async def check_poll_timeouts():
 
 @bot.event
 async def on_ready():
-    await bot.load_extension("bot.scheduler")  # â Loads scheduler from /bot folder
+    await bot.load_extension("bot.scheduler")
     await tree.sync()
     print(f"â Logged in as {bot.user} (ID: {bot.user.id})")
     check_poll_timeouts.start()
-    asyncio.create_task(trigger_week_schedule())  # ð Auto-generate schedule
+    asyncio.create_task(trigger_week_schedule())
 
 async def trigger_week_schedule():
     await bot.wait_until_ready()
     cog = bot.get_cog("BuffScheduler")
     if cog:
-        class DummyInteraction:
-            def __init__(self, guild):
-                self.guild = guild
-                self.user = guild.owner
-                self.response = type("obj", (), {"send_message": lambda *a, **kw: None})
         for guild in bot.guilds:
-            dummy = DummyInteraction(guild)
-            await cog.generate_week_schedule(dummy)
+            await cog.run_generate_schedule(guild)
 
 bot.run(TOKEN)
