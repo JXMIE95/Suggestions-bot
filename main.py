@@ -48,7 +48,7 @@ class SuggestionModal(discord.ui.Modal, title="Submit a Suggestion"):
         main_role = interaction.guild.get_role(CONFIG["main_role"])
 
         msg = await main_channel.send(content=main_role.mention if main_role else "", embed=embed)
-        await msg.add_reaction("👍")
+        await msg.add_reaction("ð")
 
         polls[msg.id] = {
             "original_embed": embed,
@@ -99,7 +99,7 @@ async def setup(interaction: discord.Interaction,
     })
 
     await suggestion_channel.send("Use the button below to submit suggestions:", view=SuggestionButtons())
-    await interaction.response.send_message("✅ Setup complete.", ephemeral=True)
+    await interaction.response.send_message("â Setup complete.", ephemeral=True)
 
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -109,7 +109,7 @@ async def on_raw_reaction_add(payload):
     msg_id = payload.message_id
     emoji = str(payload.emoji)
 
-    if msg_id in polls and emoji == "👍":
+    if msg_id in polls and emoji == "ð":
         polls[msg_id]["thumbs_up"] += 1
 
         if polls[msg_id]["thumbs_up"] >= 10 and not polls[msg_id]["resolved"]:
@@ -123,15 +123,15 @@ async def send_to_staff_poll(msg_id):
     staff_role = staff_channel.guild.get_role(CONFIG["staff_role"])
 
     embed = discord.Embed(
-        title=f"📊 Diplomat Poll: {poll['original_embed'].title}",
+        title=f"ð Diplomat Poll: {poll['original_embed'].title}",
         description=f"{poll['original_embed'].description}",
         color=discord.Color.orange()
     )
-    embed.set_footer(text="React with ✅ or ❌ — 24h timer")
+    embed.set_footer(text="React with â or â â 24h timer")
 
     msg = await staff_channel.send(content=staff_role.mention if staff_role else "", embed=embed)
-    await msg.add_reaction("✅")
-    await msg.add_reaction("❌")
+    await msg.add_reaction("â")
+    await msg.add_reaction("â")
 
     poll["staff_msg"] = msg
     poll["votes"] = {}
@@ -162,7 +162,7 @@ async def check_poll_timeouts():
         if all_voted or timed_out:
             passed = len(yes_votes) > len(no_votes)
             embed = discord.Embed(
-                title="✅ Suggestion Passed by Diplomats" if passed else "❌ Suggestion Rejected by Diplomats",
+                title="â Suggestion Passed by Diplomats" if passed else "â Suggestion Rejected by Diplomats",
                 description=poll["original_embed"].description,
                 color=discord.Color.green() if passed else discord.Color.red()
             )
@@ -171,9 +171,23 @@ async def check_poll_timeouts():
 
 @bot.event
 async def on_ready():
+    await bot.load_extension("bot.scheduler")  # â Loads scheduler from /bot folder
     await tree.sync()
-    await bot.load_extension("bot.scheduler")
-    print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
+    print(f"â Logged in as {bot.user} (ID: {bot.user.id})")
     check_poll_timeouts.start()
+    asyncio.create_task(trigger_week_schedule())  # ð Auto-generate schedule
+
+async def trigger_week_schedule():
+    await bot.wait_until_ready()
+    cog = bot.get_cog("BuffScheduler")
+    if cog:
+        class DummyInteraction:
+            def __init__(self, guild):
+                self.guild = guild
+                self.user = guild.owner
+                self.response = type("obj", (), {"send_message": lambda *a, **kw: None})
+        for guild in bot.guilds:
+            dummy = DummyInteraction(guild)
+            await cog.generate_week_schedule(dummy)
 
 bot.run(TOKEN)
