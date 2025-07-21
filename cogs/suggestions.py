@@ -1,8 +1,10 @@
 import discord
 from discord.ext import commands, tasks
+from discord import app_commands
 from discord.ui import Button, View, Modal, TextInput
 import json
 import asyncio
+import os
 
 with open("config.json") as f:
     config = json.load(f)
@@ -10,77 +12,63 @@ with open("config.json") as f:
 class Suggestions(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.active_suggestions = {}  # message_id -> upvote count
-        self.vote_check_loop.start()
+        self.active = {}  # message_id → posted channel & time
+        self.check_loop.start()
 
-    @commands.command()
-    async def setup_suggestions(self, ctx):
-        """Send a button to start the suggestion modal."""
+    @app_commands.command(description="Setup the suggestion button")
+    async def setup_suggestions(self, interaction: discord.Interaction):
         button = Button(label="Submit Suggestion", style=discord.ButtonStyle.primary)
-
-        async def button_callback(interaction):
-            await interaction.response.send_modal(SuggestionModal())
-
-        button.callback = button_callback
+        async def cb(i):
+            await i.response.send_modal(SuggestionModal())
+        button.callback = cb
         view = View()
         view.add_item(button)
-        await ctx.send("Click the button to submit a suggestion:", view=view)
+        await interaction.response.send_message("Click to submit a suggestion:", view=view, ephemeral=True)
 
     @tasks.loop(seconds=30)
-    async def vote_check_loop(self):
-        for message_id, data in list(self.active_suggestions.items()):
-            channel = self.bot.get_channel(data['channel_id'])
+    async def check_loop(self):
+        for mid, data in list(self.active.items()):
+            ch = self.bot.get_channel(data["channel"])
             try:
-                msg = await channel.fetch_message(message_id)
+                msg = await ch.fetch_message(mid)
             except discord.NotFound:
+                self.active.pop(mid, None)
                 continue
+            up = next((r.count for r in msg.reactions if r.emoji == "👍"), 0)
+            if up >= config["vote_threshold"]:
+                self.active.pop(mid, None)
+                await self.to_staff(msg)
 
-            upvotes = discord.utils.get(msg.reactions, emoji="👍")
-            count = upvotes.count if upvotes else 0
-
-            if count >= config["vote_threshold"]:
-                del self.active_suggestions[message_id]
-                await self.send_to_staff(msg)
-
-    async def send_to_staff(self, msg):
-        staff_channel = self.bot.get_channel(config["staff_channel"])
-        embed = discord.Embed(title="Staff Poll", description=msg.embeds[0].description)
-        poll_msg = await staff_channel.send(embed=embed)
-        await poll_msg.add_reaction("✅")
-        await poll_msg.add_reaction("❌")
-
+    async def to_staff(self, msg):
+        sch = self.bot.get_channel(config["staff_channel"])
+        em = discord.Embed(title="Staff Poll", description=msg.embeds[0].description)
+        poll = await sch.send(embed=em)
+        await poll.add_reaction("✅")
+        await poll.add_reaction("❌")
         await asyncio.sleep(config["vote_timer_minutes"] * 60)
-
-        poll_msg = await staff_channel.fetch_message(poll_msg.id)
-        yes = discord.utils.get(poll_msg.reactions, emoji="✅")
-        no = discord.utils.get(poll_msg.reactions, emoji="❌")
-
-        yes_count = yes.count - 1 if yes else 0
-        no_count = no.count - 1 if no else 0
-
-        result = "✅ Accepted!" if yes_count > no_count else "❌ Rejected."
-        result_embed = discord.Embed(title="Suggestion Result", description=msg.embeds[0].description)
-        result_embed.add_field(name="Outcome", value=result)
-
-        announce_channel = self.bot.get_channel(config["announcement_channel"])
-        role_mention = f"<@&{config['notify_role']}>" if config["notify_role"] else ""
-        await announce_channel.send(role_mention, embed=result_embed)
+        poll = await sch.fetch_message(poll.id)
+        yes = next((r.count - 1 for r in poll.reactions if r.emoji == "✅"), 0)
+        no = next((r.count - 1 for r in poll.reactions if r.emoji == "❌"), 0)
+        result = "✅ Accepted" if yes > no else "❌ Rejected"
+        ann = self.bot.get_channel(config["announcement_channel"])
+        mention = f"<@&{config['notify_role']}>" if config["notify_role"] else ""
+        em2 = discord.Embed(title="Suggestion Result", description=msg.embeds[0].description)
+        em2.add_field(name="Outcome", value=result)
+        await ann.send(content=mention, embed=em2)
 
     @commands.Cog.listener()
-    async def on_message(self, message):
-        if message.author != self.bot.user and message.embeds:
-            self.active_suggestions[message.id] = {
-                'channel_id': message.channel.id
-            }
+    async def on_message(self, msg):
+        if msg.author.bot or not msg.embeds: return
+        self.active[msg.id] = {"channel": msg.channel.id}
 
-class SuggestionModal(Modal, title="Submit a Suggestion"):
+class SuggestionModal(Modal, title="Submit Suggestion"):
     suggestion = TextInput(label="Suggestion", style=discord.TextStyle.paragraph)
-
     async def on_submit(self, interaction: discord.Interaction):
-        embed = discord.Embed(description=self.suggestion.value, color=discord.Color.blue())
-        suggestion_channel = interaction.guild.get_channel(config["main_suggestion_channel"])
-        role_mention = f"<@&{config['notify_role']}>" if config["notify_role"] else ""
-        msg = await suggestion_channel.send(role_mention, embed=embed)
+        guild = interaction.guild
+        ch = guild.get_channel(config["main_suggestion_channel"])
+        mention = f"<@&{config['notify_role']}>" if config["notify_role"] else ""
+        em = discord.Embed(description=self.suggestion.value, color=discord.Color.blue())
+        msg = await ch.send(content=mention, embed=em)
         await msg.add_reaction("👍")
         await msg.add_reaction("👎")
         await interaction.response.send_message("✅ Suggestion submitted!", ephemeral=True)
