@@ -2,8 +2,8 @@ import discord
 from discord.ext import commands, tasks
 from discord import app_commands
 import os
-from dotenv import load_dotenv
 import asyncio
+from dotenv import load_dotenv
 from datetime import datetime, timedelta
 
 load_dotenv()
@@ -18,7 +18,7 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
 
-# Global settings
+# Global config dictionary
 CONFIG = {
     "suggestion_channel": None,
     "main_channel": None,
@@ -27,6 +27,11 @@ CONFIG = {
     "main_role": None,
     "staff_role": None,
     "announcement_role": None,
+    "scheduler_category_id": None,
+    "notification_channel_id": None,
+    "king_role_id": None,
+    "buff_giver_role_id": None,
+    "shift_role_id": None
 }
 
 polls = {}
@@ -175,16 +180,10 @@ async def on_ready():
     print(f"â Logged in as {bot.user} (ID: {bot.user.id})")
     check_poll_timeouts.start()
 
-bot.run(TOKEN)
-
-
-
-async def load_extensions():
-    await bot.load_extension("bot.scheduler")
-
 async def main():
-    await load_extensions()
-    await bot.start(TOKEN)
+    async with bot:
+        await bot.load_extension("bot.scheduler")
+        await bot.start(TOKEN)
 
-import asyncio
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
