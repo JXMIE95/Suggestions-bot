@@ -2,7 +2,7 @@ import os
 import json
 
 config = {
-    "token": os.environ.get("DISCORD_TOKEN"),
+    "token": os.environ.get("BOT_TOKEN"),
     "suggestion_channel_id": int(os.environ.get("SUGGESTION_CHANNEL_ID")),
     "main_channel_id": int(os.environ.get("MAIN_CHANNEL_ID")),
     "staff_channel_id": int(os.environ.get("STAFF_CHANNEL_ID")),
