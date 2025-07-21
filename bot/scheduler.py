@@ -182,7 +182,6 @@ class BuffScheduler(commands.Cog):
                         except Exception as e:
                             print(f"â Failed to assign role to {user_id}: {e}")
 
-        # Remove role for expired shift
         past_key = (now - timedelta(hours=1)).strftime("%Y-%m-%d %H:00")
         if role_id and past_key in self.schedule:
             for guild in self.bot.guilds:
@@ -221,19 +220,24 @@ class BuffScheduler(commands.Cog):
             await interaction.response.send_message("â Invalid category ID.", ephemeral=True)
             return
 
+        # Delete existing channels
+        for channel in category.channels:
+            try:
+                await channel.delete(reason="Resetting weekly buff schedule")
+            except Exception as e:
+                print(f"Failed to delete channel: {e}")
+
         today = datetime.utcnow().date()
         for i in range(7):
             date = today + timedelta(days=i)
             channel_name = date.strftime("buffs-%A").lower()
-            existing = discord.utils.get(category.channels, name=channel_name)
-            if not existing:
-                channel = await interaction.guild.create_text_channel(channel_name, category=category)
-                embed = discord.Embed(
-                    title=f"ð Buff Giver Shifts â {date}",
-                    description="Select your available shifts below (UTC time).",
-                    color=discord.Color.blue()
-                )
-                await channel.send(embed=embed, view=ShiftView(datetime.combine(date, datetime.min.time()), self.schedule, self))
+            channel = await interaction.guild.create_text_channel(channel_name, category=category)
+            embed = discord.Embed(
+                title=f"ð Buff Giver Shifts â {date}",
+                description="Select your available shifts below (UTC time).",
+                color=discord.Color.blue()
+            )
+            await channel.send(embed=embed, view=ShiftView(datetime.combine(date, datetime.min.time()), self.schedule, self))
 
         await interaction.response.send_message("â Weekly schedule created.", ephemeral=True)
 
