@@ -1,27 +1,21 @@
 import discord
 from discord.ext import commands
-from dotenv import load_dotenv
-import asyncio
+import json
 import os
 
-load_dotenv()
+with open("config.json") as f:
+    config = json.load(f)
+
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f"✅ Logged in as {bot.user}")
-    try:
-        synced = await bot.tree.sync()
-        print(f"🔁 Synced {len(synced)} slash commands.")
-    except Exception as e:
-        print(f"❌ Command sync failed:", e)
+    print(f"Logged in as {bot.user.name}")
+    await bot.tree.sync()
 
-async def main():
-    async with bot:
-        await bot.load_extension("cogs.suggestions")
-        await bot.load_extension("cogs.scheduler")
-        await bot.load_extension("cogs.config_commands")
-        await bot.start(os.getenv("BOT_TOKEN"))
+for filename in os.listdir("./cogs"):
+    if filename.endswith(".py"):
+        bot.load_extension(f"cogs.{filename[:-3]}")
 
-asyncio.run(main())
+bot.run(config["token"])
