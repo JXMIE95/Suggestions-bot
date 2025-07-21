@@ -1,5 +1,6 @@
 {
     "king_role_id": null,
     "buff_role_id": null,
-    "category_id": null
+    "category_id": null,
+    "shift_role_id": null
 }
