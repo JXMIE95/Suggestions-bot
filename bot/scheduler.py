@@ -105,7 +105,8 @@ class BuffScheduler(commands.Cog):
                 for uid in users:
                     note = day_schedule["notes"].get(str(uid), "")
                     formatted.append(f"<@{uid}>" + (f" ({note})" if note else ""))
-                embed.add_field(name=hour_str, value="\n".join(formatted), inline=False)
+                embed.add_field(name=hour_str, value="
+".join(formatted), inline=False)
 
         view = ScheduleView(channel.guild, channel.name)
         await channel.send(embed=embed, view=view)
@@ -148,7 +149,8 @@ class BuffScheduler(commands.Cog):
                         for uid in users:
                             note = day_schedule["notes"].get(str(uid), "")
                             formatted.append(f"<@{uid}>" + (f" ({note})" if note else ""))
-                        embed.add_field(name=hour_str, value="\n".join(formatted), inline=False)
+                        embed.add_field(name=hour_str, value="
+".join(formatted), inline=False)
                 await msg.edit(embed=embed)
                 return
 
@@ -204,6 +206,12 @@ class ShiftModal(discord.ui.Modal, title="Edit Your Shifts"):
         cog = interaction.client.get_cog("BuffScheduler")
         await cog.update_message(self.channel, schedule[guild_id][date_str], guild_id)
         await interaction.response.send_message("â Shifts updated!", ephemeral=True)
+
+
+    @app_commands.command(name="generate_schedule", description="Manually generate the weekly schedule.")
+    async def generate_schedule(self, interaction: discord.Interaction):
+        await self.run_generate_schedule(interaction.guild)
+        await interaction.response.send_message("â Schedule generated!", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(BuffScheduler(bot))
