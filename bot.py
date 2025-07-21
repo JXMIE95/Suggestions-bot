@@ -1,8 +1,8 @@
 import discord
 from discord.ext import commands
+from dotenv import load_dotenv
 import asyncio
 import os
-from dotenv import load_dotenv
 
 load_dotenv()
 intents = discord.Intents.all()
@@ -21,9 +21,7 @@ async def main():
     async with bot:
         await bot.load_extension("cogs.suggestions")
         await bot.load_extension("cogs.scheduler")
-        token = os.getenv("BOT_TOKEN")
-        if not token:
-            raise RuntimeError("⚠️ BOT_TOKEN not set in environment")
-        await bot.start(token)
+        await bot.load_extension("cogs.config_commands")
+        await bot.start(os.getenv("BOT_TOKEN"))
 
 asyncio.run(main())
