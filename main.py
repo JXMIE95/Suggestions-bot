@@ -172,6 +172,7 @@ async def check_poll_timeouts():
 @bot.event
 async def on_ready():
     await tree.sync()
+    await bot.load_extension("bot.scheduler")
     print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
     check_poll_timeouts.start()
 
