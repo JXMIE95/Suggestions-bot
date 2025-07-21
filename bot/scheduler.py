@@ -208,8 +208,43 @@ class BuffScheduler(commands.Cog):
         save_config(self.config)
         await interaction.response.send_message(f"â Shift role set to {role.mention}", ephemeral=True)
 
+    
+    async def run_generate_schedule(self, guild: discord.Guild):
+        category_id = self.config.get("category_id")
+        if not category_id:
+            print("â ï¸ No schedule category configured.")
+            return
+
+        category = discord.utils.get(guild.categories, id=category_id)
+        if not category:
+            print("â Invalid category.")
+            return
+
+        for channel in category.channels:
+            try:
+                await channel.delete(reason="Resetting weekly buff schedule")
+            except Exception as e:
+                print(f"Failed to delete channel: {e}")
+
+        today = datetime.utcnow().date()
+        for i in range(7):
+            date = today + timedelta(days=i)
+            channel_name = date.strftime("buffs-%A").lower()
+            channel = await guild.create_text_channel(channel_name, category=category)
+            embed = discord.Embed(
+                title=f"ð Buff Giver Shifts â {date}",
+                description="Select your available shifts below (UTC time).",
+                color=discord.Color.blue()
+            )
+            await channel.send(embed=embed, view=ShiftView(datetime.combine(date, datetime.min.time()), self.schedule, self))
+
+        print(f"â Weekly schedule created for {guild.name}")
+
     @app_commands.command(name="generate_week_schedule", description="Auto-create schedule for the next 7 days")
     async def generate_week_schedule(self, interaction: discord.Interaction):
+        await self.run_generate_schedule(interaction.guild)
+        await interaction.response.send_message("â Weekly schedule created.", ephemeral=True)
+
         category_id = self.config.get("category_id")
         if not category_id:
             await interaction.response.send_message("â ï¸ Please set the category first with `/set_schedule_category`", ephemeral=True)
