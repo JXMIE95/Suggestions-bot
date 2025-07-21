@@ -1,0 +1,14 @@
+{
+  "token": "YOUR_DISCORD_BOT_TOKEN",
+  "main_suggestion_channel": 123456789012345678,
+  "staff_channel": 123456789012345678,
+  "announcement_channel": 123456789012345678,
+  "notify_role": 123456789012345678,
+  "staff_role": 123456789012345678,
+  "vote_threshold": 5,
+  "vote_timer_minutes": 30,
+  "schedule_category_id": 123456789012345678,
+  "king_role": 123456789012345678,
+  "buff_role": 123456789012345678,
+  "notification_channel": 123456789012345678
+}
