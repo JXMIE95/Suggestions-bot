@@ -4,7 +4,6 @@ from discord import app_commands
 from datetime import datetime, timedelta
 import json
 import os
-import asyncio
 
 CONFIG_FILE = "buff_config.json"
 DATA_FILE = "buff_schedule.json"
@@ -75,7 +74,30 @@ class BuffScheduler(commands.Cog):
         self.reminder_loop.cancel()
         self.shift_role_assignment_loop.cancel()
 
-    
+    @tasks.loop(seconds=60)
+    async def reminder_loop(self):
+        now = datetime.utcnow().replace(second=0, microsecond=0)
+        reminder_time = now + timedelta(minutes=5)
+        shift_key = reminder_time.strftime("%Y-%m-%d %H:00")
+        if shift_key in self.schedule:
+            for guild in self.bot.guilds:
+                for user_id in self.schedule[shift_key]:
+                    member = guild.get_member(user_id)
+                    if member:
+                        try:
+                            await member.send(f"â° Reminder: You are scheduled as a Buff Giver in 5 minutes at {shift_key} (UTC).")
+                        except discord.Forbidden:
+                            print(f"â Cannot DM user {user_id}")
+
+                    king_role_id = self.config.get("king_role_id")
+                    buff_role_id = self.config.get("buff_role_id")
+                    king_role = guild.get_role(king_role_id) if king_role_id else None
+                    buff_role = guild.get_role(buff_role_id) if buff_role_id else None
+                    target_channel = discord.utils.get(guild.text_channels, name="buff-reminders")
+                    if target_channel and (king_role or buff_role):
+                        mentions = " ".join(role.mention for role in [king_role, buff_role] if role)
+                        await target_channel.send(f"{mentions} â â° Upcoming buff shift in 5 minutes at {shift_key} UTC")
+
     @tasks.loop(seconds=60)
     async def shift_role_assignment_loop(self):
         now = datetime.utcnow().replace(second=0, microsecond=0)
@@ -108,39 +130,6 @@ class BuffScheduler(commands.Cog):
                             await member.remove_roles(shift_role, reason="Buff shift ended")
                         except Exception as e:
                             print(f"â Couldn't remove role from {user_id}: {e}")
-
-
-    @tasks.loop(seconds=60)
-    async def reminder_loop(self):
-        now = datetime.utcnow().replace(second=0, microsecond=0)
-        reminder_time = now + timedelta(minutes=5)
-        shift_key = reminder_time.strftime("%Y-%m-%d %H:00")
-        if shift_key in self.schedule:
-            for guild in self.bot.guilds:
-                for user_id in self.schedule[shift_key]:
-                    member = guild.get_member(user_id)
-                    if member:
-                        try:
-                            await member.send(f"â° Reminder: You are scheduled as a Buff Giver in 5 minutes at {shift_key} (UTC).")
-        for guild in self.bot.guilds:
-            king_role_id = self.config.get("king_role_id")
-            shift_role_id = self.config.get("shift_role_id")
-            king_role = guild.get_role(king_role_id) if king_role_id else None
-            shift_role = guild.get_role(shift_role_id) if shift_role_id else None
-            target_channel = discord.utils.get(guild.text_channels, name="buff-reminders")
-            if target_channel and (king_role or buff_role):
-                mentions = " ".join(role.mention for role in [king_role, buff_role] if role)
-                await target_channel.send(f"{mentions} â â° Upcoming buff shift in 5 minutes at {shift_key} UTC")
-                        except discord.Forbidden:
-                            print(f"â Cannot DM user {user_id}")
-
-    
-    @app_commands.command(name="set_shift_role", description="Set the role to auto-assign and remove for shifts")
-    async def set_shift_role(self, interaction: discord.Interaction, role: discord.Role):
-        self.config["shift_role_id"] = role.id
-        save_config(self.config)
-        await interaction.response.send_message(f"â Shift role set to {role.mention}", ephemeral=True)
-
 
     @app_commands.command(name="generate_week_schedule", description="Auto-create schedule for the next 7 days")
     async def generate_week_schedule(self, interaction: discord.Interaction):
@@ -176,6 +165,12 @@ class BuffScheduler(commands.Cog):
         self.config["category_id"] = int(category_id)
         save_config(self.config)
         await interaction.response.send_message(f"ð Schedule category set to ID {category_id}", ephemeral=True)
+
+    @app_commands.command(name="set_shift_role", description="Set the role to auto-assign and remove for shifts")
+    async def set_shift_role(self, interaction: discord.Interaction, role: discord.Role):
+        self.config["shift_role_id"] = role.id
+        save_config(self.config)
+        await interaction.response.send_message(f"â Shift role set to {role.mention}", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(BuffScheduler(bot))
