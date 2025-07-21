@@ -2,8 +2,8 @@ import discord
 from discord.ext import commands, tasks
 from discord import app_commands
 import os
-import asyncio
 from dotenv import load_dotenv
+import asyncio
 from datetime import datetime, timedelta
 
 load_dotenv()
@@ -11,13 +11,14 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.reactions = True
 intents.guilds = True
 intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
 
-# Global CONFIG dictionary for suggestion bot
+# Global settings
 CONFIG = {
     "suggestion_channel": None,
     "main_channel": None,
@@ -29,8 +30,6 @@ CONFIG = {
 }
 
 polls = {}
-
-# ---------------------------- Suggestion Modal UI ----------------------------
 
 class SuggestionModal(discord.ui.Modal, title="Submit a Suggestion"):
     title_input = discord.ui.TextInput(label="Suggestion Title", required=True, max_length=100)
@@ -49,7 +48,7 @@ class SuggestionModal(discord.ui.Modal, title="Submit a Suggestion"):
         main_role = interaction.guild.get_role(CONFIG["main_role"])
 
         msg = await main_channel.send(content=main_role.mention if main_role else "", embed=embed)
-        await msg.add_reaction("👍")
+        await msg.add_reaction("ð")
 
         polls[msg.id] = {
             "original_embed": embed,
@@ -70,7 +69,7 @@ class SuggestionButtons(discord.ui.View):
     async def make_suggestion(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(SuggestionModal(user=interaction.user))
 
-@tree.command(name="setup", description="Configure suggestion bot channels and roles.")
+@tree.command(name="setup", description="Configure bot channels and roles.")
 @app_commands.describe(
     suggestion_channel="Channel where suggestion buttons appear",
     main_channel="Channel where suggestions are posted",
@@ -100,7 +99,7 @@ async def setup(interaction: discord.Interaction,
     })
 
     await suggestion_channel.send("Use the button below to submit suggestions:", view=SuggestionButtons())
-    await interaction.response.send_message("✅ Suggestion bot setup complete.", ephemeral=True)
+    await interaction.response.send_message("â Setup complete.", ephemeral=True)
 
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -110,7 +109,7 @@ async def on_raw_reaction_add(payload):
     msg_id = payload.message_id
     emoji = str(payload.emoji)
 
-    if msg_id in polls and emoji == "👍":
+    if msg_id in polls and emoji == "ð":
         polls[msg_id]["thumbs_up"] += 1
 
         if polls[msg_id]["thumbs_up"] >= 10 and not polls[msg_id]["resolved"]:
@@ -124,15 +123,15 @@ async def send_to_staff_poll(msg_id):
     staff_role = staff_channel.guild.get_role(CONFIG["staff_role"])
 
     embed = discord.Embed(
-        title=f"📊 Diplomat Poll: {poll['original_embed'].title}",
+        title=f"ð Diplomat Poll: {poll['original_embed'].title}",
         description=f"{poll['original_embed'].description}",
         color=discord.Color.orange()
     )
-    embed.set_footer(text="React with ✅ or ❌ — 24h timer")
+    embed.set_footer(text="React with â or â â 24h timer")
 
     msg = await staff_channel.send(content=staff_role.mention if staff_role else "", embed=embed)
-    await msg.add_reaction("✅")
-    await msg.add_reaction("❌")
+    await msg.add_reaction("â")
+    await msg.add_reaction("â")
 
     poll["staff_msg"] = msg
     poll["votes"] = {}
@@ -163,34 +162,29 @@ async def check_poll_timeouts():
         if all_voted or timed_out:
             passed = len(yes_votes) > len(no_votes)
             embed = discord.Embed(
-                title="✅ Suggestion Passed by Diplomats" if passed else "❌ Suggestion Rejected by Diplomats",
+                title="â Suggestion Passed by Diplomats" if passed else "â Suggestion Rejected by Diplomats",
                 description=poll["original_embed"].description,
                 color=discord.Color.green() if passed else discord.Color.red()
             )
             await announcement_channel.send(content=announcement_role.mention if announcement_role else "", embed=embed)
             poll["finished"] = True
 
-# ---------------------------- Scheduler Integration ----------------------------
+@bot.event
+async def on_ready():
+    await tree.sync()
+    print(f"â Logged in as {bot.user} (ID: {bot.user.id})")
+    check_poll_timeouts.start()
+
+bot.run(TOKEN)
+
+
 
 async def load_extensions():
     await bot.load_extension("bot.scheduler")
 
-@bot.event
-async def on_ready():
-    await tree.sync()
-    check_poll_timeouts.start()
-    print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
-
-    try:
-        await load_extensions()
-    except Exception as e:
-        print(f"❌ Failed to load extension: {e}")
-
-# ---------------------------- Run the bot ----------------------------
-
 async def main():
-    async with bot:
-        await bot.start(TOKEN)
+    await load_extensions()
+    await bot.start(TOKEN)
 
-if __name__ == "__main__":
-    asyncio.run(main())
+import asyncio
+asyncio.run(main())
