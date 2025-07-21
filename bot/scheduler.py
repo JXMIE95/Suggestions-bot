@@ -12,7 +12,12 @@ def load_config():
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
-    return {"king_role_id": None, "buff_role_id": None, "category_id": None, "shift_role_id": None}
+    return {
+        "king_role_id": None,
+        "buff_role_id": None,
+        "category_id": None,
+        "shift_role_id": None
+    }
 
 def save_config(config):
     with open(CONFIG_FILE, "w") as f:
@@ -30,21 +35,17 @@ def save_schedule(schedule):
 
 class TimeRangeSelect(discord.ui.Select):
     def __init__(self, shift_date: datetime, schedule_dict):
-        options = []
         self.schedule = schedule_dict
         self.shift_date = shift_date
+        options = []
         for hour in range(0, 24):
-            start = f"{hour:02d}:00"
-            end = f"{(hour+1)%24:02d}:00"
-            label = f"{start} - {end}"
+            label = f"{hour:02d}:00 - {(hour+1)%24:02d}:00"
             options.append(discord.SelectOption(label=label, value=str(hour)))
-
         super().__init__(placeholder="Select your available shift(s)", min_values=1, max_values=6, options=options)
 
     async def callback(self, interaction: discord.Interaction):
         user = interaction.user
         selected_hours = self.values
-
         for hour_str in selected_hours:
             hour = int(hour_str)
             shift_time = self.shift_date.replace(hour=hour, minute=0, second=0, microsecond=0)
@@ -53,14 +54,76 @@ class TimeRangeSelect(discord.ui.Select):
                 self.schedule[shift_key] = []
             if user.id not in self.schedule[shift_key]:
                 self.schedule[shift_key].append(user.id)
-
         save_schedule(self.schedule)
         await interaction.response.send_message(f"â {user.mention}, you signed up for {len(selected_hours)} shift(s)!", ephemeral=True)
+        await self.view.cog.log_action(interaction.guild, f"â {user.name} signed up for {len(selected_hours)} shift(s) on {self.shift_date.date()}")
+
+class CancelHourSelect(discord.ui.Select):
+    def __init__(self, shift_date: datetime, schedule_dict, user_id):
+        self.shift_date = shift_date
+        self.schedule = schedule_dict
+        self.user_id = user_id
+
+        user_shifts = []
+        for hour in range(24):
+            shift_time = shift_date.replace(hour=hour, minute=0, second=0, microsecond=0)
+            shift_key = shift_time.strftime("%Y-%m-%d %H:00")
+            if shift_key in schedule_dict and user_id in schedule_dict[shift_key]:
+                user_shifts.append((shift_key, hour))
+
+        options = [
+            discord.SelectOption(label=f"{hour:02d}:00 - {(hour+1)%24:02d}:00", value=str(hour))
+            for shift_key, hour in user_shifts
+        ]
+
+        super().__init__(
+            placeholder="Select shifts to cancel",
+            min_values=1,
+            max_values=len(options),
+            options=options,
+            custom_id="cancel_hour_select"
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        removed = 0
+        for hour_str in self.values:
+            hour = int(hour_str)
+            shift_time = self.shift_date.replace(hour=hour, minute=0, second=0, microsecond=0)
+            shift_key = shift_time.strftime("%Y-%m-%d %H:00")
+            if shift_key in self.schedule and self.user_id in self.schedule[shift_key]:
+                self.schedule[shift_key].remove(self.user_id)
+                removed += 1
+
+        save_schedule(self.schedule)
+        await interaction.response.send_message(f"ð Cancelled {removed} shift(s) for {self.shift_date.date()}", ephemeral=True)
+        await self.view.cog.log_action(interaction.guild, f"ð {interaction.user.name} cancelled {removed} shift(s) for {self.shift_date.date()}")
+
+class CancelShiftView(discord.ui.View):
+    def __init__(self, shift_date, schedule_dict, user_id, cog):
+        super().__init__(timeout=60)
+        self.cog = cog
+        self.add_item(CancelHourSelect(shift_date, schedule_dict, user_id))
+
+class CancelShiftButton(discord.ui.Button):
+    def __init__(self, shift_date, schedule_dict, cog):
+        super().__init__(label="â Cancel My Shift(s)", style=discord.ButtonStyle.danger)
+        self.shift_date = shift_date
+        self.schedule = schedule_dict
+        self.cog = cog
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_message(
+            f"Select which shifts to cancel for {self.shift_date.date()}:",
+            view=CancelShiftView(self.shift_date, self.schedule, interaction.user.id, self.cog),
+            ephemeral=True
+        )
 
 class ShiftView(discord.ui.View):
-    def __init__(self, shift_date: datetime, schedule_dict):
+    def __init__(self, shift_date: datetime, schedule_dict, cog):
         super().__init__(timeout=None)
+        self.cog = cog
         self.add_item(TimeRangeSelect(shift_date, schedule_dict))
+        self.add_item(CancelShiftButton(shift_date, schedule_dict, cog))
 
 class BuffScheduler(commands.Cog):
     def __init__(self, bot):
@@ -69,6 +132,11 @@ class BuffScheduler(commands.Cog):
         self.schedule = load_schedule()
         self.reminder_loop.start()
         self.shift_role_assignment_loop.start()
+
+    async def log_action(self, guild: discord.Guild, message: str):
+        log_channel = discord.utils.get(guild.text_channels, name="buff-log")
+        if log_channel:
+            await log_channel.send(message)
 
     def cog_unload(self):
         self.reminder_loop.cancel()
@@ -81,84 +149,53 @@ class BuffScheduler(commands.Cog):
         shift_key = reminder_time.strftime("%Y-%m-%d %H:00")
         if shift_key in self.schedule:
             for guild in self.bot.guilds:
+                king_role = guild.get_role(self.config.get("king_role_id"))
+                buff_role = guild.get_role(self.config.get("buff_role_id"))
+                target_channel = discord.utils.get(guild.text_channels, name="buff-reminders")
                 for user_id in self.schedule[shift_key]:
                     member = guild.get_member(user_id)
                     if member:
                         try:
-                            await member.send(f"â° Reminder: You are scheduled as a Buff Giver in 5 minutes at {shift_key} (UTC).")
+                            await member.send(f"â° Reminder: Your buff giver shift starts in 5 minutes at {shift_key} UTC.")
                         except discord.Forbidden:
-                            print(f"â Cannot DM user {user_id}")
-
-                    king_role_id = self.config.get("king_role_id")
-                    buff_role_id = self.config.get("buff_role_id")
-                    king_role = guild.get_role(king_role_id) if king_role_id else None
-                    buff_role = guild.get_role(buff_role_id) if buff_role_id else None
-                    target_channel = discord.utils.get(guild.text_channels, name="buff-reminders")
-                    if target_channel and (king_role or buff_role):
-                        mentions = " ".join(role.mention for role in [king_role, buff_role] if role)
-                        await target_channel.send(f"{mentions} â â° Upcoming buff shift in 5 minutes at {shift_key} UTC")
+                            print(f"â Could not DM user {user_id}")
+                if target_channel and (king_role or buff_role):
+                    mentions = " ".join(role.mention for role in [king_role, buff_role] if role)
+                    await target_channel.send(f"{mentions} â â° Buff shift starts in 5 minutes at {shift_key} UTC.")
 
     @tasks.loop(seconds=60)
     async def shift_role_assignment_loop(self):
         now = datetime.utcnow().replace(second=0, microsecond=0)
         shift_key = now.strftime("%Y-%m-%d %H:00")
-        if shift_key in self.schedule:
+        role_id = self.config.get("shift_role_id")
+
+        if role_id and shift_key in self.schedule:
             for guild in self.bot.guilds:
-                shift_role_id = self.config.get("shift_role_id")
-                shift_role = guild.get_role(shift_role_id) if shift_role_id else None
-                if not shift_role:
+                role = guild.get_role(role_id)
+                if not role:
                     continue
                 for user_id in self.schedule[shift_key]:
                     member = guild.get_member(user_id)
-                    if member and shift_role not in member.roles:
+                    if member and role not in member.roles:
                         try:
-                            await member.add_roles(shift_role, reason="Buff shift started")
+                            await member.add_roles(role, reason="Shift started")
                         except Exception as e:
-                            print(f"â Couldn't assign role to {user_id}: {e}")
-        # Remove expired roles
+                            print(f"â Failed to assign role to {user_id}: {e}")
+
+        # Remove role for expired shift
         past_key = (now - timedelta(hours=1)).strftime("%Y-%m-%d %H:00")
-        if past_key in self.schedule:
+        if role_id and past_key in self.schedule:
             for guild in self.bot.guilds:
-                shift_role_id = self.config.get("shift_role_id")
-                shift_role = guild.get_role(shift_role_id) if shift_role_id else None
-                if not shift_role:
+                role = guild.get_role(role_id)
+                if not role:
                     continue
                 for user_id in self.schedule[past_key]:
                     member = guild.get_member(user_id)
-                    if member and shift_role in member.roles:
+                    if member and role in member.roles:
                         try:
-                            await member.remove_roles(shift_role, reason="Buff shift ended")
+                            await member.remove_roles(role, reason="Shift ended")
                         except Exception as e:
-                            print(f"â Couldn't remove role from {user_id}: {e}")
-
-    @app_commands.command(name="generate_week_schedule", description="Auto-create schedule for the next 7 days")
-    async def generate_week_schedule(self, interaction: discord.Interaction):
-        category_id = self.config.get("category_id")
-        if not category_id:
-            await interaction.response.send_message("â ï¸ Category not set. Use `/set_schedule_category` first.", ephemeral=True)
-            return
-
-        category = discord.utils.get(interaction.guild.categories, id=category_id)
-        if not category:
-            await interaction.response.send_message("â Invalid category ID.", ephemeral=True)
-            return
-
-        today = datetime.utcnow().date()
-        for i in range(7):
-            day = today + timedelta(days=i)
-            channel_name = day.strftime("buffs-%A").lower()
-            existing = discord.utils.get(category.channels, name=channel_name)
-            if not existing:
-                new_channel = await interaction.guild.create_text_channel(channel_name, category=category)
-                view = ShiftView(datetime.combine(day, datetime.min.time()), self.schedule)
-                embed = discord.Embed(
-                    title=f"ð Buff Giver Shifts â {day}",
-                    description="Select your available shifts below (UTC time).",
-                    color=discord.Color.green()
-                )
-                await new_channel.send(embed=embed, view=view)
-
-        await interaction.response.send_message("â Weekly schedule generated.", ephemeral=True)
+                            print(f"â Failed to remove role from {user_id}: {e}")
 
     @app_commands.command(name="set_schedule_category", description="Set the schedule category ID")
     async def set_schedule_category(self, interaction: discord.Interaction, category_id: str):
@@ -171,6 +208,34 @@ class BuffScheduler(commands.Cog):
         self.config["shift_role_id"] = role.id
         save_config(self.config)
         await interaction.response.send_message(f"â Shift role set to {role.mention}", ephemeral=True)
+
+    @app_commands.command(name="generate_week_schedule", description="Auto-create schedule for the next 7 days")
+    async def generate_week_schedule(self, interaction: discord.Interaction):
+        category_id = self.config.get("category_id")
+        if not category_id:
+            await interaction.response.send_message("â ï¸ Please set the category first with `/set_schedule_category`", ephemeral=True)
+            return
+
+        category = discord.utils.get(interaction.guild.categories, id=category_id)
+        if not category:
+            await interaction.response.send_message("â Invalid category ID.", ephemeral=True)
+            return
+
+        today = datetime.utcnow().date()
+        for i in range(7):
+            date = today + timedelta(days=i)
+            channel_name = date.strftime("buffs-%A").lower()
+            existing = discord.utils.get(category.channels, name=channel_name)
+            if not existing:
+                channel = await interaction.guild.create_text_channel(channel_name, category=category)
+                embed = discord.Embed(
+                    title=f"ð Buff Giver Shifts â {date}",
+                    description="Select your available shifts below (UTC time).",
+                    color=discord.Color.blue()
+                )
+                await channel.send(embed=embed, view=ShiftView(datetime.combine(date, datetime.min.time()), self.schedule, self))
+
+        await interaction.response.send_message("â Weekly schedule created.", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(BuffScheduler(bot))
