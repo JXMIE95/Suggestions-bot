@@ -1,4 +1,5 @@
 console.log("DEBUG - DATABASE_URL:", process.env.DATABASE_URL);
+
 const { Client } = require('pg');
 const logger = require('../utils/logger');
 
