@@ -4,7 +4,7 @@ const { Client } = require('pg');
 const logger = require('../utils/logger');
 
 const client = new Client({
-    connectionString: 'postgresql://postgres:tBjUJOGVDzGbONEtQLmxNXFRURrQmwON@shortline.proxy.rlwy.net:40558/railway',
+    connectionString: process.env.DATABASE_URL,
     ssl: {
         rejectUnauthorized: false
     }
@@ -22,6 +22,15 @@ async function init() {
 }
 
 async function createTables() {
+    try {
+        // Drop conflicting sequence if it exists
+        await client.query(`DROP SEQUENCE IF EXISTS suggestions_id_seq CASCADE`);
+        logger.info('🗑️ Dropped existing suggestions_id_seq sequence');
+    } catch (err) {
+        logger.error('❌ Failed to drop sequence:', err);
+        throw err;
+    }
+
     const queries = [
         `CREATE TABLE IF NOT EXISTS suggestions (
             id SERIAL PRIMARY KEY,
