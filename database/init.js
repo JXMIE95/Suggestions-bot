@@ -1,124 +1,96 @@
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
+const { Client } = require('pg');
 const logger = require('../utils/logger');
 
-const dbPath = path.join(__dirname, '..', 'bot.db');
+const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false
+    }
+});
 
-let db;
-
-function init() {
-    return new Promise((resolve, reject) => {
-        db = new sqlite3.Database(dbPath, (err) => {
-            if (err) {
-                logger.error('Error opening database:', err);
-                reject(err);
-                return;
-            }
-            
-            logger.info('Connected to SQLite database');
-            
-            // Create tables
-            createTables()
-                .then(() => resolve())
-                .catch(reject);
-        });
-    });
+async function init() {
+    try {
+        await client.connect();
+        logger.info('✅ Connected to PostgreSQL database');
+        await createTables();
+    } catch (err) {
+        logger.error('❌ Failed to initialize database:', err);
+        throw err;
+    }
 }
 
-function createTables() {
-    return new Promise((resolve, reject) => {
-        const queries = [
-            // Suggestions table
-            `CREATE TABLE IF NOT EXISTS suggestions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                messageId TEXT UNIQUE,
-                userId TEXT NOT NULL,
-                content TEXT NOT NULL,
-                status TEXT DEFAULT 'pending',
-                upvotes INTEGER DEFAULT 0,
-                downvotes INTEGER DEFAULT 0,
-                staffMessageId TEXT,
-                createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-                votingEndsAt DATETIME,
-                staffVotingEndsAt DATETIME
-            )`,
-            
-            // Suggestion votes table
-            `CREATE TABLE IF NOT EXISTS suggestion_votes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                suggestionId INTEGER,
-                userId TEXT,
-                voteType TEXT,
-                FOREIGN KEY (suggestionId) REFERENCES suggestions (id),
-                UNIQUE(suggestionId, userId)
-            )`,
-            
-            // Staff votes table
-            `CREATE TABLE IF NOT EXISTS staff_votes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                suggestionId INTEGER,
-                userId TEXT,
-                vote TEXT,
-                FOREIGN KEY (suggestionId) REFERENCES suggestions (id),
-                UNIQUE(suggestionId, userId)
-            )`,
-            
-            // Schedule roster table
-            `CREATE TABLE IF NOT EXISTS roster (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                channelId TEXT NOT NULL,
-                userId TEXT NOT NULL,
-                username TEXT NOT NULL,
-                timeSlot TEXT NOT NULL,
-                roleType TEXT NOT NULL,
-                date TEXT NOT NULL,
-                createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(channelId, timeSlot, userId)
-            )`,
-            
-            // Notifications table
-            `CREATE TABLE IF NOT EXISTS notifications (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                type TEXT NOT NULL,
-                channelId TEXT NOT NULL,
-                timeSlot TEXT NOT NULL,
-                date TEXT NOT NULL,
-                sent BOOLEAN DEFAULT FALSE,
-                createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-            )`,
-            
-            // Check-ins table
-            `CREATE TABLE IF NOT EXISTS checkins (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                userId TEXT NOT NULL,
-                timeSlot TEXT NOT NULL,
-                date TEXT NOT NULL,
-                checkedInAt DATETIME DEFAULT CURRENT_TIMESTAMP
-            )`
-        ];
-        
-        let completed = 0;
-        
-        queries.forEach((query, index) => {
-            db.run(query, (err) => {
-                if (err) {
-                    logger.error(`Error creating table ${index}:`, err);
-                    reject(err);
-                    return;
-                }
-                
-                completed++;
-                if (completed === queries.length) {
-                    logger.info('All database tables created successfully');
-                    resolve();
-                }
-            });
-        });
-    });
+async function createTables() {
+    const queries = [
+        `CREATE TABLE IF NOT EXISTS suggestions (
+            id SERIAL PRIMARY KEY,
+            messageId TEXT UNIQUE,
+            userId TEXT NOT NULL,
+            content TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            upvotes INTEGER DEFAULT 0,
+            downvotes INTEGER DEFAULT 0,
+            staffMessageId TEXT,
+            createdAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            votingEndsAt TIMESTAMPTZ,
+            staffVotingEndsAt TIMESTAMPTZ
+        )`,
+        `CREATE TABLE IF NOT EXISTS suggestion_votes (
+            id SERIAL PRIMARY KEY,
+            suggestionId INTEGER REFERENCES suggestions(id),
+            userId TEXT,
+            voteType TEXT,
+            UNIQUE(suggestionId, userId)
+        )`,
+        `CREATE TABLE IF NOT EXISTS staff_votes (
+            id SERIAL PRIMARY KEY,
+            suggestionId INTEGER REFERENCES suggestions(id),
+            userId TEXT,
+            vote TEXT,
+            UNIQUE(suggestionId, userId)
+        )`,
+        `CREATE TABLE IF NOT EXISTS roster (
+            id SERIAL PRIMARY KEY,
+            channelId TEXT NOT NULL,
+            userId TEXT NOT NULL,
+            username TEXT NOT NULL,
+            timeSlot TEXT NOT NULL,
+            roleType TEXT NOT NULL,
+            date TEXT NOT NULL,
+            createdAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(channelId, timeSlot, userId)
+        )`,
+        `CREATE TABLE IF NOT EXISTS notifications (
+            id SERIAL PRIMARY KEY,
+            type TEXT NOT NULL,
+            channelId TEXT NOT NULL,
+            timeSlot TEXT NOT NULL,
+            date TEXT NOT NULL,
+            sent BOOLEAN DEFAULT FALSE,
+            createdAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE TABLE IF NOT EXISTS checkins (
+            id SERIAL PRIMARY KEY,
+            userId TEXT NOT NULL,
+            timeSlot TEXT NOT NULL,
+            date TEXT NOT NULL,
+            checkedInAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )`
+    ];
+
+    for (let i = 0; i < queries.length; i++) {
+        try {
+            await client.query(queries[i]);
+        } catch (err) {
+            logger.error(`❌ Error creating table ${i}:`, err);
+            throw err;
+        }
+    }
+
+    logger.info('✅ All database tables created successfully');
 }
 
 function getDatabase() {
-    return db;
+    return client;
 }
 
 module.exports = {
