@@ -4,7 +4,7 @@ const { Client } = require('pg');
 const logger = require('../utils/logger');
 
 const client = new Client({
-    connectionString: postgresql://postgres:tBjUJOGVDzGbONEtQLmxNXFRURrQmwON@shortline.proxy.rlwy.net:40558/railway,
+    connectionString: 'postgresql://postgres:tBjUJOGVDzGbONEtQLmxNXFRURrQmwON@shortline.proxy.rlwy.net:40558/railway',
     ssl: {
         rejectUnauthorized: false
     }
