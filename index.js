@@ -7,7 +7,7 @@ require('dotenv').config();
 const logger = require('./utils/logger');
 const db = require('./database/init');
 const scheduler = require('./systems/scheduler');
-const { postSuggestionButton } = require('./events/suggestions');
+const { postSuggestionButton } = require('./systems/suggestions');
 
 // Initialize Discord client
 const client = new Client({
