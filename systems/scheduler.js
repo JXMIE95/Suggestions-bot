@@ -83,7 +83,7 @@ async function setupRosterMessage(channel, date) {
         // Add fields for each time slot
         for (const slot of timeSlots) {
             const fieldValue = slot.users.length > 0 
-                ? slot.users.map(user => `• ${user.username} (${user.role})`).join('\n')
+                ? slot.users.map(user => `• ${user.nickname} (${user.role})`).join('\n')
                 : 'No one scheduled';
             
             embed.addFields({
