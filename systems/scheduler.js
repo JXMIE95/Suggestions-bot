@@ -99,12 +99,12 @@ async function setupRosterMessage(channel, date) {
                     .setCustomId(`roster_add_${date}`)
                     .setLabel('Add Availability')
                     .setStyle(ButtonStyle.Success)
-                    .setEmoji('â'),
+                    .setEmoji('➕'),
                 new ButtonBuilder()
                     .setCustomId(`roster_cancel_${date}`)
                     .setLabel('Cancel Availability')
                     .setStyle(ButtonStyle.Danger)
-                    .setEmoji('â'),
+                    .setEmoji('❌'),
                 new ButtonBuilder()
                     .setCustomId(`roster_edit_${date}`)
                     .setLabel('Edit Availability')
