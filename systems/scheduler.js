@@ -109,7 +109,7 @@ async function setupRosterMessage(channel, date) {
                     .setCustomId(`roster_edit_${date}`)
                     .setLabel('Edit Availability')
                     .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('âï¸')
+                    .setEmoji('✍️')
             );
 
         await channel.send({
