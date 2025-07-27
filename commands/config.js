@@ -1,7 +1,7 @@
 
 const { SlashCommandBuilder, ChannelType } = require('discord.js');
 const fs = require('fs');
-const path = require('('path');
+const path = require('path');
 const logger = require('../utils/logger');
 
 const CONFIG_PATH = path.join(__dirname, '..', 'config.json');
