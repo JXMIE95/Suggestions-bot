@@ -15,7 +15,7 @@ module.exports = {
     .addChannelOption(option =>
       option.setName('scheduler_category')
         .setDescription('Category for daily roster channels')
-        .addChannelTypes(ChannelType.GuildCategory)
+        .addChannelTypes(4)
         .setRequired(false))
     .addChannelOption(option =>
       option.setName('notification_channel')
