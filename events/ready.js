@@ -1,40 +1,47 @@
 
-const { Events, ActivityType, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Events } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const logger = require('../utils/logger');
 const scheduler = require('../systems/scheduler');
-const { initializeSuggestions } = require('../systems/suggestions');
+const suggestions = require('../systems/suggestions');
+const logger = require('../utils/logger');
 
 module.exports = {
-    name: Events.ClientReady,
-    once: true,
-    async execute(client) {
-        logger.info(`Bot is ready! Logged in as ${client.user.tag}`);
+  name: Events.ClientReady,
+  once: true,
+  async execute(client) {
+    logger.info(`Bot is ready! Logged in as ${client.user.tag}`);
 
-        // Set bot status
-        client.user.setActivity('Managing suggestions and schedules', { type: ActivityType.Watching });
+    try {
+      const commands = client.commands.map(cmd => cmd.data.toJSON());
+      await client.application.commands.set(commands);
+      logger.info('Successfully registered application commands');
+    } catch (err) {
+      logger.error('Error registering commands:', err);
+    }
 
-        // Register slash commands
-        try {
-            const commands = [];
-            const commandFiles = fs.readdirSync(path.join(__dirname, '..', 'commands')).filter(file => file.endsWith('.js'));
+    const configPath = path.join(__dirname, '..', 'config.json');
+    if (!fs.existsSync(configPath)) {
+      logger.warn('No config.json found, skipping system initialization');
+      return;
+    }
 
-            for (const file of commandFiles) {
-                const command = require(`../commands/${file}`);
-                commands.push(command.data.toJSON());
-            }
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 
-            await client.application.commands.set(commands);
-            logger.info('Successfully registered application commands');
-        } catch (error) {
-            logger.error('Error registering commands:', error);
-        }
+    if (config.suggestions?.enabled && config.suggestions.channelId) {
+      try {
+        await suggestions.setupSuggestionsButton(client);
+      } catch (err) {
+        logger.error('Error posting suggestions button:', err);
+      }
+    }
 
-        // Setup suggestions button in configured channel
-        await initializeSuggestions(client);
-
-        // Initialize scheduler channels
+    if (config.scheduler?.enabled && config.scheduler.categoryId) {
+      try {
         await scheduler.initializeScheduler(client);
-    },
+      } catch (err) {
+        logger.error('Error initializing scheduler:', err);
+      }
+    }
+  }
 };
