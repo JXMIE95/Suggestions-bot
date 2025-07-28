@@ -1,68 +1,76 @@
-const { SlashCommandBuilder, ChannelType } = require('discord.js');
+
+const { SlashCommandBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+
 const configPath = path.join(__dirname, '..', 'config.json');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('config')
-    .setDescription('Configure bot settings')
+    .setDescription('Set up bot configuration')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addChannelOption(option =>
       option.setName('suggestions_channel')
-        .setDescription('Channel for suggestion submission')
+        .setDescription('Channel where suggestion button is posted')
         .addChannelTypes(ChannelType.GuildText)
-        .setRequired(false))
+        .setRequired(true))
     .addChannelOption(option =>
       option.setName('general_channel')
-        .setDescription('Channel where suggestions are posted for public voting')
+        .setDescription('Channel where suggestions are sent')
         .addChannelTypes(ChannelType.GuildText)
-        .setRequired(false))
+        .setRequired(true))
     .addChannelOption(option =>
       option.setName('staff_channel')
-        .setDescription('Staff review channel')
+        .setDescription('Channel where staff vote on suggestions')
         .addChannelTypes(ChannelType.GuildText)
-        .setRequired(false))
+        .setRequired(true))
     .addChannelOption(option =>
       option.setName('announcement_channel')
-        .setDescription('Channel where accepted/rejected suggestions are announced')
+        .setDescription('Channel where decisions are announced')
         .addChannelTypes(ChannelType.GuildText)
-        .setRequired(false))
+        .setRequired(true))
+    .addChannelOption(option =>
+      option.setName('scheduler_category')
+        .setDescription('Category for creating schedule channels')
+        .addChannelTypes(ChannelType.GuildCategory)
+        .setRequired(true))
     .addRoleOption(option =>
-      option.setName('staff_role')
-        .setDescription('Role used for staff voting')
-        .setRequired(false))
+      option.setName('king_role')
+        .setDescription('Role representing a King')
+        .setRequired(true))
+    .addRoleOption(option =>
+      option.setName('buff_giver_role')
+        .setDescription('Role representing a Buff Giver')
+        .setRequired(true))
     .addIntegerOption(option =>
-      option.setName('upvote_threshold')
-        .setDescription('Number of 👍 votes required to escalate')
-        .setMinValue(1)
-        .setRequired(false))
+      option.setName('vote_threshold')
+        .setDescription('Vote threshold for sending suggestion to staff')
+        .setRequired(true))
     .addIntegerOption(option =>
-      option.setName('decision_delay')
-        .setDescription('Delay in hours before posting result (0 to wait for all staff)')
-        .setMinValue(0)
-        .setRequired(false)),
+      option.setName('vote_duration')
+        .setDescription('Voting duration in hours before final decision')
+        .setRequired(true)),
 
   async execute(interaction) {
     try {
-      const config = fs.existsSync(configPath)
-        ? JSON.parse(fs.readFileSync(configPath, 'utf8'))
-        : {};
-
-      config.suggestions = {
-        suggestionsChannelId: interaction.options.getChannel('suggestions_channel')?.id || config.suggestions?.suggestionsChannelId || null,
-        generalChannelId: interaction.options.getChannel('general_channel')?.id || config.suggestions?.generalChannelId || null,
-        staffChannelId: interaction.options.getChannel('staff_channel')?.id || config.suggestions?.staffChannelId || null,
-        announcementChannelId: interaction.options.getChannel('announcement_channel')?.id || config.suggestions?.announcementChannelId || null,
-        staffRoleId: interaction.options.getRole('staff_role')?.id || config.suggestions?.staffRoleId || null,
-        upvoteThreshold: interaction.options.getInteger('upvote_threshold') ?? config.suggestions?.upvoteThreshold ?? 5,
-        decisionDelayHours: interaction.options.getInteger('decision_delay') ?? config.suggestions?.decisionDelayHours ?? 24
+      const data = {
+        suggestionsChannelId: interaction.options.getChannel('suggestions_channel').id,
+        generalChannelId: interaction.options.getChannel('general_channel').id,
+        staffChannelId: interaction.options.getChannel('staff_channel').id,
+        announcementChannelId: interaction.options.getChannel('announcement_channel').id,
+        schedulerCategoryId: interaction.options.getChannel('scheduler_category').id,
+        kingRoleId: interaction.options.getRole('king_role').id,
+        buffGiverRoleId: interaction.options.getRole('buff_giver_role').id,
+        voteThreshold: interaction.options.getInteger('vote_threshold'),
+        voteDurationHours: interaction.options.getInteger('vote_duration')
       };
 
-      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-      await interaction.reply({ content: '✅ Configuration saved.', ephemeral: true });
+      fs.writeFileSync(configPath, JSON.stringify(data, null, 2));
+      await interaction.reply({ content: '✅ Configuration saved successfully!', ephemeral: true });
     } catch (error) {
-      console.error('[CONFIG ERROR]', error);
-      await interaction.reply({ content: '❌ Failed to save config.', ephemeral: true });
+      console.error(error);
+      await interaction.reply({ content: '❌ Failed to save configuration.', ephemeral: true });
     }
   }
 };
