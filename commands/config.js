@@ -1,42 +1,70 @@
-
 const { SlashCommandBuilder, ChannelType } = require('discord.js');
-const fs = require('fs');
 const path = require('path');
+const fs = require('fs');
 
 const configPath = path.join(__dirname, '..', 'config.json');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('config')
-        .setDescription('Set configuration for suggestion and roster systems')
+        .setDescription('Configure bot settings')
         .addChannelOption(option =>
-            option.setName('suggestions_channel')
-                .setDescription('Channel to post suggestion buttons')
-                .addChannelTypes(ChannelType.GuildText)
-                .setRequired(true))
+            option
+                .setName('suggestions_channel')
+                .setDescription('Channel for suggestions')
+                .setRequired(true)
+        )
         .addChannelOption(option =>
-            option.setName('scheduler_category')
-                .setDescription('Category for scheduler channels')
+            option
+                .setName('scheduler_category')
+                .setDescription('Category for roster channels')
                 .addChannelTypes(ChannelType.GuildCategory)
-                .setRequired(true)),
-
+                .setRequired(true)
+        )
+        .addChannelOption(option =>
+            option
+                .setName('notification_channel')
+                .setDescription('Channel for shift reminders')
+                .setRequired(true)
+        )
+        .addRoleOption(option =>
+            option
+                .setName('king_role')
+                .setDescription('Role for Kings')
+                .setRequired(true)
+        )
+        .addRoleOption(option =>
+            option
+                .setName('buff_giver_role')
+                .setDescription('Role for Buff Givers')
+                .setRequired(true)
+        ),
     async execute(interaction) {
-        const suggestionsChannel = interaction.options.getChannel('suggestions_channel');
-        const schedulerCategory = interaction.options.getChannel('scheduler_category');
+        try {
+            const suggestionsChannel = interaction.options.getChannel('suggestions_channel');
+            const schedulerCategory = interaction.options.getChannel('scheduler_category');
+            const notificationChannel = interaction.options.getChannel('notification_channel');
+            const kingRole = interaction.options.getRole('king_role');
+            const buffGiverRole = interaction.options.getRole('buff_giver_role');
 
-        const config = {
-            suggestions: {
-                channelId: suggestionsChannel.id
-            },
-            scheduler: {
-                enabled: true,
-                categoryId: schedulerCategory.id,
-                notificationMinutes: 5,
-                maxConcurrentUsers: 2
-            }
-        };
+            const config = {
+                suggestionsChannelId: suggestionsChannel.id,
+                scheduler: {
+                    enabled: true,
+                    categoryId: schedulerCategory.id,
+                    notificationChannelId: notificationChannel.id,
+                    notificationMinutes: 5,
+                    kingRoleId: kingRole.id,
+                    buffGiverRoleId: buffGiverRole.id,
+                    maxConcurrentUsers: 2
+                }
+            };
 
-        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-        await interaction.reply({ content: '✅ Configuration saved!', ephemeral: true });
+            fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+            await interaction.reply({ content: '✅ Configuration saved successfully!', ephemeral: true });
+        } catch (err) {
+            console.error('[ERROR] Saving config:', err);
+            await interaction.reply({ content: '❌ Failed to save configuration.', ephemeral: true });
+        }
     }
 };
