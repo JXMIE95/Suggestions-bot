@@ -1,3 +1,4 @@
+
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -80,16 +81,17 @@ async function setupRosterMessage(channel, date) {
     await channel.send({ embeds: [embed], components: [row] });
 }
 
+
+async function handleRosterAdd(interaction) {
+    try {
+        await interaction.reply({ content: '📌 Roster add handler not yet implemented.', ephemeral: true });
+    } catch (err) {
+        console.error('Error in handleRosterAdd:', err);
+    }
+}
+
+
 module.exports = {
     initializeScheduler,
-    setupRosterMessage,
-    handleRosterAdd,
-    handleRosterCancel,
-    handleRosterEdit,
-    handleRosterConfirm,
-    handleRosterCancelSelection,
-    handleRosterAddModal,
-    handleRosterEditModal,
-    handleRosterTimeSelect,
-    handleShiftCheckin
+    setupRosterMessage
 };
