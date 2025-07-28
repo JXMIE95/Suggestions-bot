@@ -9,9 +9,14 @@ const configPath = path.join(__dirname, '..', 'config.json');
 
 async function initializeScheduler(client) {
     try {
+        if (!fs.existsSync(configPath)) {
+            logger.warn('No config file found. Skipping scheduler setup.');
+            return;
+        }
+
         const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        if (!config.scheduler || !config.scheduler.enabled || !config.scheduler.categoryId) {
-            logger.warn('Scheduler config not set. Skipping scheduler setup.');
+        if (!config.scheduler?.enabled || !config.scheduler.categoryId) {
+            logger.warn('Scheduler not enabled or missing categoryId. Skipping scheduler setup.');
             return;
         }
 
@@ -75,23 +80,15 @@ async function setupRosterMessage(channel, date) {
                 .setCustomId(`roster_edit_${date}`)
                 .setLabel('Edit Availability')
                 .setStyle(ButtonStyle.Secondary)
-                .setEmoji('✏️')
+                .setEmoji('✍️')
         );
 
-    await channel.send({ embeds: [embed], components: [row] });
+    await channel.send({
+        embeds: [embed],
+        components: [row]
+    });
 }
-
-
-async function handleRosterAdd(interaction) {
-    try {
-        await interaction.reply({ content: '📌 Roster add handler not yet implemented.', ephemeral: true });
-    } catch (err) {
-        console.error('Error in handleRosterAdd:', err);
-    }
-}
-
 
 module.exports = {
-    initializeScheduler,
-    setupRosterMessage
+    initializeScheduler
 };
