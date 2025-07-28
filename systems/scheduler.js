@@ -1,4 +1,3 @@
-
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -83,5 +82,14 @@ async function setupRosterMessage(channel, date) {
 
 module.exports = {
     initializeScheduler,
-    setupRosterMessage
+    setupRosterMessage,
+    handleRosterAdd,
+    handleRosterCancel,
+    handleRosterEdit,
+    handleRosterConfirm,
+    handleRosterCancelSelection,
+    handleRosterAddModal,
+    handleRosterEditModal,
+    handleRosterTimeSelect,
+    handleShiftCheckin
 };
