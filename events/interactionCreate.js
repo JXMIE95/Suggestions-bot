@@ -13,7 +13,9 @@ module.exports = {
             }
 
             if (interaction.isButton()) {
-                if (interaction.customId.startsWith('suggest_')) {
+                if (interaction.customId === 'confirm_availability') {
+                    await scheduler.handleConfirmAvailability(interaction);
+                } else if (interaction.customId.startsWith('suggest_')) {
                     await suggestions.handleSuggestion(interaction);
                 } else if (interaction.customId.startsWith('roster_add_')) {
                     await scheduler.handleRosterAdd(interaction);
