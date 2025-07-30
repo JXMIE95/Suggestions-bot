@@ -12,6 +12,7 @@ const {
 const fs = require('fs');
 const path = require('path');
 const { getDatabase } = require('../database/init');
+const db = getDatabase();
 const logger = require('../utils/logger');
 
 const configPath = path.join(__dirname, '..', 'config.json');
