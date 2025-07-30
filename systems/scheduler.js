@@ -170,6 +170,74 @@ async function handleRosterAdd(interaction) {
   });
 }
 
+async function handleSelectDate(interaction) {
+  const userId = interaction.user.id;
+  const selectedDate = interaction.values[0];
+
+  if (!userSelections.has(userId)) {
+    userSelections.set(userId, {});
+  }
+
+  userSelections.get(userId).date = selectedDate;
+
+  await interaction.reply({
+    content: `📅 Date selected: **${selectedDate}**`,
+    ephemeral: true,
+  });
+}
+
+async function handleSelectStart(interaction) {
+  const userId = interaction.user.id;
+  const startTime = interaction.values[0];
+
+  if (!userSelections.has(userId)) {
+    userSelections.set(userId, {});
+  }
+
+  userSelections.get(userId).start = startTime;
+
+  await interaction.reply({
+    content: `🕓 Start time selected: **${startTime}**`,
+    ephemeral: true,
+  });
+}
+
+async function handleSelectEnd(interaction) {
+  const userId = interaction.user.id;
+  const endTime = interaction.values[0];
+
+  if (!userSelections.has(userId)) {
+    userSelections.set(userId, {});
+  }
+
+  userSelections.get(userId).end = endTime;
+
+  await interaction.reply({
+    content: `🕔 End time selected: **${endTime}**`,
+    ephemeral: true,
+  });
+}
+
+async function handleConfirmAvailability(interaction) {
+  const userId = interaction.user.id;
+  const selection = userSelections.get(userId);
+
+  if (!selection || !selection.date || !selection.start || !selection.end) {
+    return await interaction.reply({
+      content: '⚠️ Please select a date, start, and end time before confirming.',
+      ephemeral: true,
+    });
+  }
+
+  // TODO: Save to database or update message embed here
+  await interaction.reply({
+    content: `✅ Availability submitted:\n**${selection.date}** from **${selection.start}** to **${selection.end}**`,
+    ephemeral: true,
+  });
+
+  userSelections.delete(userId); // Clear after use
+}
+
 async function handleRosterCancel(interaction) {
   const date = interaction.customId.split('_')[2];
   db.run(
