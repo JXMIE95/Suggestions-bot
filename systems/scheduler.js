@@ -12,7 +12,6 @@ const {
 const fs = require('fs');
 const path = require('path');
 const { getDatabase } = require('../database/init');
-const db = getDatabase();
 const logger = require('../utils/logger');
 
 const configPath = path.join(__dirname, '..', 'config.json');
@@ -292,6 +291,16 @@ async function handleSelectEnd(interaction) {
 async function handleConfirmAvailability(interaction) {
   try {
     console.log('[DEBUG] Confirm availability handler triggered');
+
+    const db = getDatabase(); // ✅ GET db HERE
+    if (!db) {
+      logger.error('Database not initialized');
+      return interaction.reply({
+        content: '❌ Internal DB error.',
+        ephemeral: true
+      });
+    }
+
     const userId = interaction.user.id;
     const username = interaction.user.username;
     const selection = userSelections.get(userId);
@@ -326,19 +335,15 @@ async function handleConfirmAvailability(interaction) {
           ephemeral: true,
         });
 
-        // Optional: Update roster message in the corresponding channel
-        if (typeof updateRosterMessage === 'function') {
-          try {
-            await updateRosterMessage(interaction.client, selection.date);
-          } catch (updateErr) {
-            console.warn('[WARN] Roster message update failed:', updateErr);
-          }
+        try {
+          await updateRosterMessage(interaction.client, selection.date);
+        } catch (updateErr) {
+          console.warn('[WARN] Roster message update failed:', updateErr);
         }
       }
     );
   } catch (error) {
     console.error('[ERROR] handleConfirmAvailability failed:', error);
-
     if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({
         content: '❌ An unexpected error occurred.',
