@@ -139,6 +139,30 @@ async function updateRosterMessage(client, date) {
   });
 }
 
+async function setupRosterMessage(channel, date) {
+  const embed = new EmbedBuilder()
+    .setTitle(`📅 Roster for ${date}`)
+    .setDescription('Click a button below to manage your availability.')
+    .setColor(0x00AE86);
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`roster_add_${date}`)
+      .setLabel('Add Availability')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`roster_cancel_${date}`)
+      .setLabel('Cancel Availability')
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId(`roster_edit_${date}`)
+      .setLabel('Edit Availability')
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  await channel.send({ embeds: [embed], components: [row] });
+}
+
 async function cleanupOldChannels(client) {
   const config = loadConfig();
   const guild = client.guilds.cache.first();
