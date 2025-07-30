@@ -62,28 +62,61 @@ async function createDailyChannels(client) {
   }
 }
 
-async function setupRosterMessage(channel, date) {
-  const embed = new EmbedBuilder()
-    .setTitle(`📅 Roster for ${date}`)
-    .setDescription('Click a button below to manage your availability.')
-    .setColor(0x00AE86);
+async function updateRosterMessage(client, date) {
+  const config = loadConfig();
+  const guild = client.guilds.cache.first();
+  const category = guild.channels.cache.get(config.scheduler.categoryId);
+  if (!category) return;
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`roster_add_${date}`)
-      .setLabel('Add Availability')
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(`roster_cancel_${date}`)
-      .setLabel('Cancel Availability')
-      .setStyle(ButtonStyle.Danger),
-    new ButtonBuilder()
-      .setCustomId(`roster_edit_${date}`)
-      .setLabel('Edit Availability')
-      .setStyle(ButtonStyle.Secondary)
+  const channel = guild.channels.cache.find(
+    ch => ch.parentId === category.id && ch.name === date
   );
+  if (!channel) return;
 
-  await channel.send({ embeds: [embed], components: [row] });
+  db.all('SELECT * FROM roster WHERE date = ?', [date], async (err, rows) => {
+    if (err) {
+      logger.error('DB read error:', err);
+      return;
+    }
+
+    const fields = [];
+
+    for (let hour = 0; hour < 24; hour++) {
+      const hourStr = hour.toString().padStart(2, '0') + ':00';
+      const matches = rows.filter(r => {
+        const [start, end] = r.timeSlot.split('–');
+        return hourStr >= start && hourStr < end;
+      });
+
+      const value = matches.length
+        ? matches.map(r => `<@${r.userId}>`).join(', ')
+        : 'No one scheduled';
+
+      fields.push({
+        name: `${hourStr} UTC`,
+        value: value,
+        inline: true
+      });
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle(`📅 Roster for ${date}`)
+      .setDescription('24-hour schedule (UTC time)')
+      .addFields(fields)
+      .setColor(0x00AE86)
+      .setTimestamp();
+
+    const messages = await channel.messages.fetch({ limit: 10 });
+    const botMessage = messages.find(
+      msg => msg.author.id === client.user.id && msg.embeds.length > 0
+    );
+
+    if (botMessage) {
+      await botMessage.edit({ embeds: [embed] });
+    } else {
+      await channel.send({ embeds: [embed] });
+    }
+  });
 }
 
 async function cleanupOldChannels(client) {
