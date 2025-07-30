@@ -105,12 +105,67 @@ async function cleanupOldChannels(client) {
   }
 }
 
+const {
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+} = require('discord.js');
+
 async function handleRosterAdd(interaction) {
-  const date = interaction.customId.split('_')[2];
-  userSelections.set(interaction.user.id, { date });
+  const today = new Date();
+  const dateOptions = [];
+
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(today);
+    date.setDate(today.getDate() + i);
+    const dateStr = date.toISOString().split('T')[0];
+    dateOptions.push({
+      label: dateStr,
+      value: dateStr,
+    });
+  }
+
+  const timeOptions = [];
+  for (let hour = 0; hour < 24; hour++) {
+    const formatted = hour.toString().padStart(2, '0') + ':00';
+    timeOptions.push({
+      label: formatted,
+      value: formatted,
+    });
+  }
+
+  const row1 = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('select_date')
+      .setPlaceholder('Select Date')
+      .addOptions(dateOptions)
+  );
+
+  const row2 = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('select_start')
+      .setPlaceholder('Select Start Time')
+      .addOptions(timeOptions)
+  );
+
+  const row3 = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('select_end')
+      .setPlaceholder('Select End Time')
+      .addOptions(timeOptions)
+  );
+
+  const confirmRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('confirm_availability')
+      .setLabel('✅ Confirm Availability')
+      .setStyle(ButtonStyle.Success)
+  );
 
   await interaction.reply({
-    content: `Please enter your time slot for ${date} (e.g., 14:00):`,
+    content: 'Please select your availability:',
+    components: [row1, row2, row3, confirmRow],
     ephemeral: true
   });
 }
