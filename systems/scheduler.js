@@ -226,7 +226,7 @@ async function handleSelectDate(interaction) {
 
   userSelections.get(userId).date = selectedDate;
 
-  await interaction.reply({
+  await interaction.deferUpdate({
     content: `📅 Date selected: **${selectedDate}**`,
     ephemeral: true,
   });
@@ -242,7 +242,7 @@ async function handleSelectStart(interaction) {
 
   userSelections.get(userId).start = startTime;
 
-  await interaction.reply({
+  await interaction.deferUpdate({
     content: `🕓 Start time selected: **${startTime}**`,
     ephemeral: true,
   });
@@ -258,7 +258,7 @@ async function handleSelectEnd(interaction) {
 
   userSelections.get(userId).end = endTime;
 
-  await interaction.reply({
+  await interaction.deferUpdate({
     content: `🕔 End time selected: **${endTime}**`,
     ephemeral: true,
   });
