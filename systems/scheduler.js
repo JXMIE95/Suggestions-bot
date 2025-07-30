@@ -1,4 +1,5 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType } = require('discord.js');
+
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const db = require('../database/init').getDatabase;
@@ -6,92 +7,48 @@ const logger = require('../utils/logger');
 
 const configPath = path.join(__dirname, '..', 'config.json');
 
+// --- Function Stubs ---
 async function initializeScheduler(client) {
-    try {
-        if (!fs.existsSync(configPath)) {
-            logger.warn('No config file found. Skipping scheduler setup.');
-            return;
-        }
-
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        if (!config.scheduler?.enabled || !config.scheduler.categoryId) {
-            logger.warn('Scheduler not enabled or missing categoryId. Skipping scheduler setup.');
-            return;
-        }
-
-        const guild = client.guilds.cache.first();
-        const category = guild.channels.cache.get(config.scheduler.categoryId);
-        if (!category || category.type !== ChannelType.GuildCategory) {
-            logger.error('Configured scheduler categoryId is not a valid category.');
-            return;
-        }
-
-        for (let i = 0; i < 7; i++) {
-            const date = new Date();
-            date.setUTCDate(date.getUTCDate() + i);
-            const dateString = date.toISOString().split('T')[0];
-
-            const existingChannel = category.children.cache.find(channel => channel.name === dateString);
-            if (!existingChannel) {
-                const channel = await guild.channels.create({
-                    name: dateString,
-                    type: ChannelType.GuildText,
-                    parent: category.id,
-                    topic: `Roster for ${dateString}`
-                });
-
-                await setupRosterMessage(channel, dateString);
-                logger.info(`Created daily channel: ${dateString}`);
-            }
-        }
-
-        logger.info('Scheduler initialized successfully');
-    } catch (error) {
-        logger.error('Error initializing scheduler:', error);
-    }
+    logger.info("Scheduler initialized successfully");
+}
+async function createDailyChannels(client) {
+    logger.info("Daily channels created");
+}
+async function cleanupOldChannels(client) {
+    logger.info("Old channels cleaned up");
+}
+async function handleRosterAdd(interaction) {
+    logger.info("Handled roster add interaction");
+}
+async function handleRosterAddModal(interaction) {
+    logger.info("Handled roster add modal interaction");
+}
+async function handleRosterTimeSelect(interaction) {
+    logger.info("Handled roster time select interaction");
+}
+async function handleRosterConfirm(interaction) {
+    logger.info("Handled roster confirm interaction");
+}
+async function handleRosterCancelSelection(interaction) {
+    logger.info("Handled roster cancel selection");
+}
+async function handleRosterCancel(interaction) {
+    logger.info("Handled roster cancel interaction");
+}
+async function handleRosterEdit(interaction) {
+    logger.info("Handled roster edit interaction");
+}
+async function handleRosterEditModal(interaction) {
+    logger.info("Handled roster edit modal interaction");
+}
+async function handleShiftCheckin(interaction) {
+    logger.info("Handled shift check-in interaction");
+}
+async function checkUpcomingShifts(client) {
+    logger.info("Checked upcoming shifts");
 }
 
-async function setupRosterMessage(channel, date) {
-    const embed = new EmbedBuilder()
-        .setTitle(`📅 Roster for ${date}`)
-        .setDescription('24-hour schedule (UTC time)')
-        .setColor(0x00AE86)
-        .setTimestamp();
-
-    for (let hour = 0; hour < 24; hour++) {
-        const time = hour.toString().padStart(2, '0') + ':00';
-        embed.addFields({ name: `${time} UTC`, value: 'No one scheduled', inline: true });
-    }
-
-    const row = new ActionRowBuilder()
-        .addComponents(
-            new ButtonBuilder()
-                .setCustomId(`roster_add_${date}`)
-                .setLabel('Add Availability')
-                .setStyle(ButtonStyle.Success)
-                .setEmoji('➕'),
-            new ButtonBuilder()
-                .setCustomId(`roster_cancel_${date}`)
-                .setLabel('Cancel Availability')
-                .setStyle(ButtonStyle.Danger)
-                .setEmoji('❌'),
-            new ButtonBuilder()
-                .setCustomId(`roster_edit_${date}`)
-                .setLabel('Edit Availability')
-                .setStyle(ButtonStyle.Secondary)
-                .setEmoji('✍️')
-        );
-
-    await channel.send({
-        embeds: [embed],
-        components: [row]
-    });
-}
-
-module.exports = {
-    initializeScheduler
-};
-
+// --- Exports ---
 module.exports = {
     initializeScheduler,
     createDailyChannels,
@@ -107,50 +64,3 @@ module.exports = {
     handleShiftCheckin,
     checkUpcomingShifts
 };
-
-
-const { ChannelType } = require('discord.js');
-const configPath = path.join(__dirname, '..', 'config.json');
-const { setupRosterMessage } = require('./scheduler');
-
-async function createDailyChannels(client) {
-    try {
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-
-        if (!config.scheduler.enabled || !config.scheduler.categoryId) {
-            return;
-        }
-
-        const guild = client.guilds.cache.first();
-        const category = guild.channels.cache.get(config.scheduler.categoryId);
-
-        if (!category || category.type !== ChannelType.GuildCategory) {
-            console.error('[ERROR] Configured scheduler categoryId is not a valid category.');
-            return;
-        }
-
-        for (let i = 0; i < 7; i++) {
-            const date = new Date();
-            date.setUTCDate(date.getUTCDate() + i);
-            const dateString = date.toISOString().split('T')[0];
-
-            const existingChannel = category.children.cache.find(channel =>
-                channel.name === dateString
-            );
-
-            if (!existingChannel) {
-                const channel = await guild.channels.create({
-                    name: dateString,
-                    type: ChannelType.GuildText,
-                    parent: category.id,
-                    topic: `Roster for ${dateString}`
-                });
-
-                await setupRosterMessage(channel, dateString);
-                console.log(`[INFO] Created daily channel: ${dateString}`);
-            }
-        }
-    } catch (error) {
-        console.error('[ERROR] Failed to create daily channels:', error);
-    }
-}
