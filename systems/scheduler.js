@@ -247,6 +247,8 @@ async function handleSelectEnd(interaction) {
 
 async function handleConfirmAvailability(interaction) {
   try {
+    console.log('[DEBUG] Confirm availability handler triggered');
+console.log('[DEBUG] Current selection:', userSelections.get(interaction.user.id));
     const userId = interaction.user.id;
     const username = interaction.user.username;
     const selection = userSelections.get(userId);
