@@ -246,42 +246,51 @@ async function handleSelectEnd(interaction) {
 }
 
 async function handleConfirmAvailability(interaction) {
-  const userId = interaction.user.id;
-  const username = interaction.user.username;
-  const selection = userSelections.get(userId);
+  try {
+    const userId = interaction.user.id;
+    const username = interaction.user.username;
+    const selection = userSelections.get(userId);
 
-  if (!selection || !selection.date || !selection.start || !selection.end) {
-    return await interaction.reply({
-      content: '⚠️ Please select a date, start, and end time before confirming.',
-      ephemeral: true,
-    });
-  }
+    if (!selection || !selection.date || !selection.start || !selection.end) {
+      return await interaction.reply({
+        content: '⚠️ Please select a date, start, and end time before confirming.',
+        ephemeral: true,
+      });
+    }
 
-  const timeSlot = `${selection.start}–${selection.end}`;
+    const timeSlot = `${selection.start}–${selection.end}`;
 
-  db.run(
-    'INSERT OR REPLACE INTO roster (userId, username, date, timeSlot) VALUES (?, ?, ?, ?)',
-    [userId, username, selection.date, timeSlot],
-    async err => {
-      if (err) {
-        logger.error('DB insert error:', err);
-        return interaction.reply({
-          content: '❌ Failed to save your availability.',
+    db.run(
+      'INSERT OR REPLACE INTO roster (userId, username, date, timeSlot) VALUES (?, ?, ?, ?)',
+      [userId, username, selection.date, timeSlot],
+      async err => {
+        if (err) {
+          console.error('[ERROR] DB insert failed:', err);
+          return interaction.reply({
+            content: '❌ Failed to save your availability.',
+            ephemeral: true,
+          });
+        }
+
+        userSelections.delete(userId);
+
+        await interaction.reply({
+          content: `✅ Availability submitted for **${selection.date}**: **${timeSlot}**`,
           ephemeral: true
         });
+
+        await updateRosterMessage(interaction.client, selection.date);
       }
-
-      userSelections.delete(userId);
-
+    );
+  } catch (error) {
+    console.error('[ERROR] handleConfirmAvailability failed:', error);
+    if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({
-        content: `✅ Availability submitted for **${selection.date}**: **${timeSlot}**`,
+        content: '❌ An error occurred while submitting your availability.',
         ephemeral: true
       });
-
-      // Optional: Update the roster message in the channel
-      await updateRosterMessage(interaction.client, selection.date);
     }
-  );
+  }
 }
 
 async function handleRosterCancel(interaction) {
