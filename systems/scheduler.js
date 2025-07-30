@@ -214,6 +214,7 @@ async function handleSelectEnd(interaction) {
 
 async function handleConfirmAvailability(interaction) {
   const userId = interaction.user.id;
+  const username = interaction.user.username;
   const selection = userSelections.get(userId);
 
   if (!selection || !selection.date || !selection.start || !selection.end) {
@@ -223,13 +224,31 @@ async function handleConfirmAvailability(interaction) {
     });
   }
 
-  // TODO: Save to database or update message embed here
-  await interaction.reply({
-    content: `✅ Availability submitted:\n**${selection.date}** from **${selection.start}** to **${selection.end}**`,
-    ephemeral: true,
-  });
+  const timeSlot = `${selection.start}–${selection.end}`;
 
-  userSelections.delete(userId); // Clear after use
+  db.run(
+    'INSERT OR REPLACE INTO roster (userId, username, date, timeSlot) VALUES (?, ?, ?, ?)',
+    [userId, username, selection.date, timeSlot],
+    async err => {
+      if (err) {
+        logger.error('DB insert error:', err);
+        return interaction.reply({
+          content: '❌ Failed to save your availability.',
+          ephemeral: true
+        });
+      }
+
+      userSelections.delete(userId);
+
+      await interaction.reply({
+        content: `✅ Availability submitted for **${selection.date}**: **${timeSlot}**`,
+        ephemeral: true
+      });
+
+      // Optional: Update the roster message in the channel
+      await updateRosterMessage(interaction.client, selection.date);
+    }
+  );
 }
 
 async function handleRosterCancel(interaction) {
