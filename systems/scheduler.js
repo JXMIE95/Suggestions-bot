@@ -63,58 +63,77 @@ async function createDailyChannels(client) {
 }
 
 async function updateRosterMessage(client, date) {
+  console.log(`[DEBUG] updateRosterMessage called for ${date}`);
+
   const config = loadConfig();
   const guild = client.guilds.cache.first();
   const category = guild.channels.cache.get(config.scheduler.categoryId);
-  if (!category) return;
+  if (!category) {
+    console.warn('[WARN] Scheduler category not found.');
+    return;
+  }
 
   const channel = guild.channels.cache.find(
     ch => ch.parentId === category.id && ch.name === date
   );
-  if (!channel) return;
 
-  db.all('SELECT * FROM roster WHERE date = ?', [date], async (err, rows) => {
+  if (!channel) {
+    console.warn(`[WARN] No channel found for ${date}`);
+    return;
+  }
+
+  let messages;
+  try {
+    messages = await channel.messages.fetch({ limit: 1 });
+  } catch (err) {
+    console.error('[ERROR] Failed to fetch messages from channel:', err);
+    return;
+  }
+
+  const firstMessage = messages.first();
+  if (!firstMessage) {
+    console.warn('[WARN] No message found to update.');
+    return;
+  }
+
+  // Get roster data for this date
+  db.all('SELECT username, timeSlot FROM roster WHERE date = ?', [date], async (err, rows) => {
     if (err) {
-      logger.error('DB read error:', err);
+      console.error('[ERROR] Failed to fetch roster from DB:', err);
       return;
-    }
-
-    const fields = [];
-
-    for (let hour = 0; hour < 24; hour++) {
-      const hourStr = hour.toString().padStart(2, '0') + ':00';
-      const matches = rows.filter(r => {
-        const [start, end] = r.timeSlot.split('–');
-        return hourStr >= start && hourStr < end;
-      });
-
-      const value = matches.length
-        ? matches.map(r => `<@${r.userId}>`).join(', ')
-        : 'No one scheduled';
-
-      fields.push({
-        name: `${hourStr} UTC`,
-        value: value,
-        inline: true
-      });
     }
 
     const embed = new EmbedBuilder()
       .setTitle(`📅 Roster for ${date}`)
       .setDescription('24-hour schedule (UTC time)')
-      .addFields(fields)
       .setColor(0x00AE86)
-      .setTimestamp();
+      .setTimestamp(new Date());
 
-    const messages = await channel.messages.fetch({ limit: 10 });
-    const botMessage = messages.find(
-      msg => msg.author.id === client.user.id && msg.embeds.length > 0
-    );
+    const timeSlots = {};
 
-    if (botMessage) {
-      await botMessage.edit({ embeds: [embed] });
-    } else {
-      await channel.send({ embeds: [embed] });
+    rows.forEach(({ username, timeSlot }) => {
+      const [start, end] = timeSlot.split('–');
+      const startHour = parseInt(start.split(':')[0], 10);
+      const endHour = parseInt(end.split(':')[0], 10);
+      for (let hour = startHour; hour < endHour; hour++) {
+        const hourStr = hour.toString().padStart(2, '0') + ':00 UTC';
+        if (!timeSlots[hourStr]) timeSlots[hourStr] = [];
+        timeSlots[hourStr].push(username);
+      }
+    });
+
+    for (let hour = 0; hour < 24; hour++) {
+      const label = hour.toString().padStart(2, '0') + ':00 UTC';
+      const users = timeSlots[label] || ['No one scheduled'];
+      embed.addFields({ name: label, value: users.join(', '), inline: true });
+    }
+
+    // Update the original message
+    try {
+      await firstMessage.edit({ embeds: [embed] });
+      console.log(`[INFO] Roster message updated for ${date}`);
+    } catch (err) {
+      console.error('[ERROR] Failed to edit roster message:', err);
     }
   });
 }
@@ -248,10 +267,11 @@ async function handleSelectEnd(interaction) {
 async function handleConfirmAvailability(interaction) {
   try {
     console.log('[DEBUG] Confirm availability handler triggered');
-console.log('[DEBUG] Current selection:', userSelections.get(interaction.user.id));
     const userId = interaction.user.id;
     const username = interaction.user.username;
     const selection = userSelections.get(userId);
+
+    console.log('[DEBUG] Current selection:', selection);
 
     if (!selection || !selection.date || !selection.start || !selection.end) {
       return await interaction.reply({
@@ -278,18 +298,26 @@ console.log('[DEBUG] Current selection:', userSelections.get(interaction.user.id
 
         await interaction.reply({
           content: `✅ Availability submitted for **${selection.date}**: **${timeSlot}**`,
-          ephemeral: true
+          ephemeral: true,
         });
 
-        await updateRosterMessage(interaction.client, selection.date);
+        // Optional: Update roster message in the corresponding channel
+        if (typeof updateRosterMessage === 'function') {
+          try {
+            await updateRosterMessage(interaction.client, selection.date);
+          } catch (updateErr) {
+            console.warn('[WARN] Roster message update failed:', updateErr);
+          }
+        }
       }
     );
   } catch (error) {
     console.error('[ERROR] handleConfirmAvailability failed:', error);
+
     if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({
-        content: '❌ An error occurred while submitting your availability.',
-        ephemeral: true
+        content: '❌ An unexpected error occurred.',
+        ephemeral: true,
       });
     }
   }
