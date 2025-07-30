@@ -11,7 +11,7 @@ const {
 
 const fs = require('fs');
 const path = require('path');
-const db = require('../database/init').getDatabase();
+const { getDatabase } = require('../database/init');
 const logger = require('../utils/logger');
 
 const configPath = path.join(__dirname, '..', 'config.json');
@@ -325,6 +325,15 @@ async function handleConfirmAvailability(interaction) {
 
 async function handleRosterCancel(interaction) {
   const date = interaction.customId.split('_')[2];
+  const db = getDatabase();
+  if (!db) {
+    logger.error('Database not initialized');
+    return interaction.reply({
+      content: '❌ Internal DB error.',
+      ephemeral: true
+    });
+  }
+
   db.run(
     'DELETE FROM roster WHERE userId = ? AND date = ?',
     [interaction.user.id, date],
@@ -353,7 +362,16 @@ async function handleRosterEdit(interaction) {
 }
 
 async function handleShiftCheckin(interaction) {
-  const [ , , date, timeSlot ] = interaction.customId.split('_');
+  const [, , date, timeSlot] = interaction.customId.split('_');
+  const db = getDatabase();
+  if (!db) {
+    logger.error('Database not initialized');
+    return interaction.reply({
+      content: '❌ Internal DB error.',
+      ephemeral: true
+    });
+  }
+
   db.run(
     'INSERT OR IGNORE INTO checkins (userId, date, timeSlot) VALUES (?, ?, ?)',
     [interaction.user.id, date, timeSlot],
@@ -373,6 +391,12 @@ async function handleShiftCheckin(interaction) {
 
 async function checkUpcomingShifts(client) {
   const config = loadConfig();
+  const db = getDatabase();
+  if (!db) {
+    logger.error('Database not initialized');
+    return;
+  }
+
   const now = new Date();
   const currentDate = now.toISOString().split('T')[0];
   const hour = new Date(now.getTime() + config.scheduler.notificationMinutes * 60000)
