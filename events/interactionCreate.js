@@ -39,10 +39,17 @@ module.exports = {
             }
 
             if (interaction.isStringSelectMenu()) {
-                if (interaction.customId.startsWith('roster_time_select_')) {
+                 if (interaction.customId === 'select_date') {
+                    await scheduler.handleSelectDate(interaction);
+                } else if (interaction.customId === 'select_start') {
+                    await scheduler.handleSelectStart(interaction);
+                } else if (interaction.customId === 'select_end') {
+                    await scheduler.handleSelectEnd(interaction);
+                } else if (interaction.customId.startsWith('roster_time_select_')) {
                     await scheduler.handleRosterTimeSelect(interaction);
                 }
             }
+            
         } catch (err) {
             console.error('[ERROR] Uncaught Exception:', err);
         }
