@@ -107,3 +107,52 @@ module.exports = {
     handleShiftCheckin,
     checkUpcomingShifts
 };
+
+
+const fs = require('fs');
+const path = require('path');
+const { ChannelType } = require('discord.js');
+const configPath = path.join(__dirname, '..', 'config.json');
+const { setupRosterMessage } = require('./scheduler');
+
+async function createDailyChannels(client) {
+    try {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+
+        if (!config.scheduler.enabled || !config.scheduler.categoryId) {
+            return;
+        }
+
+        const guild = client.guilds.cache.first();
+        const category = guild.channels.cache.get(config.scheduler.categoryId);
+
+        if (!category || category.type !== ChannelType.GuildCategory) {
+            console.error('[ERROR] Configured scheduler categoryId is not a valid category.');
+            return;
+        }
+
+        for (let i = 0; i < 7; i++) {
+            const date = new Date();
+            date.setUTCDate(date.getUTCDate() + i);
+            const dateString = date.toISOString().split('T')[0];
+
+            const existingChannel = category.children.cache.find(channel =>
+                channel.name === dateString
+            );
+
+            if (!existingChannel) {
+                const channel = await guild.channels.create({
+                    name: dateString,
+                    type: ChannelType.GuildText,
+                    parent: category.id,
+                    topic: `Roster for ${dateString}`
+                });
+
+                await setupRosterMessage(channel, dateString);
+                console.log(`[INFO] Created daily channel: ${dateString}`);
+            }
+        }
+    } catch (error) {
+        console.error('[ERROR] Failed to create daily channels:', error);
+    }
+}
