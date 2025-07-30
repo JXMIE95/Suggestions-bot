@@ -105,13 +105,6 @@ async function cleanupOldChannels(client) {
   }
 }
 
-const {
-  ActionRowBuilder,
-  StringSelectMenuBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-} = require('discord.js');
-
 async function handleRosterAdd(interaction) {
   const today = new Date();
   const dateOptions = [];
