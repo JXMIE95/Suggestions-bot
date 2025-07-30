@@ -109,8 +109,6 @@ module.exports = {
 };
 
 
-const fs = require('fs');
-const path = require('path');
 const { ChannelType } = require('discord.js');
 const configPath = path.join(__dirname, '..', 'config.json');
 const { setupRosterMessage } = require('./scheduler');
