@@ -1,9 +1,9 @@
-
 const fs = require('fs');
 const path = require('path');
 const { Client, Collection, GatewayIntentBits } = require('discord.js');
 const { token } = require('./config.json');
 const logger = require('./utils/logger');
+const db = require('./database/init'); // ✅ Add DB init
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
@@ -36,9 +36,18 @@ for (const file of eventFiles) {
     }
 }
 
-client.login(token);
+// ✅ Initialize the database BEFORE starting the bot
+db.init()
+  .then(() => {
+      logger.info('Database initialized. Logging in bot...');
+      client.login(token);
+  })
+  .catch((err) => {
+      logger.error('Failed to initialize database. Bot will not start.', err);
+      process.exit(1); // Exit the process if DB fails
+  });
 
-// Improved uncaught exception logging
+// ✅ Improved uncaught exception logging
 process.on('uncaughtException', (error) => {
     console.error('Uncaught Exception:', error);
     logger.error(`Uncaught Exception: ${error.stack || error.message || error}`);
