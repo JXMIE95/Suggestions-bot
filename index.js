@@ -1,58 +1,114 @@
-const fs = require('fs');
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
-const { Client, Collection, GatewayIntentBits } = require('discord.js');
-const logger = require('./utils/logger');
-const db = require('./database/init'); // ✅ Add DB init
+const logger = require('../utils/logger');
 
-const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
-});
+const dbPath = process.env.DATABASE_URL || path.join(__dirname, '..', 'bot.db');
 
-client.commands = new Collection();
-const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+let db;
 
-for (const file of commandFiles) {
-    const filePath = path.join(commandsPath, file);
-    const command = require(filePath);
-    if (command.data && command.execute) {
-        client.commands.set(command.data.name, command);
-    } else {
-        logger.warn(`Command at ${filePath} is missing "data" or "execute" property.`);
-    }
-}
+function init() {
+  return new Promise((resolve, reject) => {
+    db = new sqlite3.Database(dbPath, (err) => {
+      if (err) {
+        logger.error('Error opening database:', err);
+        reject(err);
+        return;
+      }
 
-const eventsPath = path.join(__dirname, 'events');
-const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
+      logger.info('Connected to SQLite database');
 
-for (const file of eventFiles) {
-    const filePath = path.join(eventsPath, file);
-    const event = require(filePath);
-    if (event.once) {
-        client.once(event.name, (...args) => event.execute(...args, client));
-    } else {
-        client.on(event.name, (...args) => event.execute(...args, client));
-    }
-}
-
-// ✅ Initialize the database BEFORE starting the bot
-db.init()
-  .then(() => {
-      logger.info('Database initialized. Logging in bot...');
-      client.login(token);
-  })
-  .catch((err) => {
-      logger.error('Failed to initialize database. Bot will not start.', err);
-      process.exit(1); // Exit the process if DB fails
+      createTables()
+        .then(() => resolve())
+        .catch(reject);
+    });
   });
+}
 
-// ✅ Improved uncaught exception logging
-process.on('uncaughtException', (error) => {
-    console.error('Uncaught Exception:', error);
-    logger.error(`Uncaught Exception: ${error.stack || error.message || error}`);
-});
+function createTables() {
+  return new Promise((resolve, reject) => {
+    const queries = [
+      `CREATE TABLE IF NOT EXISTS suggestions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        messageId TEXT UNIQUE,
+        userId TEXT NOT NULL,
+        content TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',
+        upvotes INTEGER DEFAULT 0,
+        downvotes INTEGER DEFAULT 0,
+        staffMessageId TEXT,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        votingEndsAt DATETIME,
+        staffVotingEndsAt DATETIME
+      )`,
+      `CREATE TABLE IF NOT EXISTS suggestion_votes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        suggestionId INTEGER,
+        userId TEXT,
+        voteType TEXT,
+        FOREIGN KEY (suggestionId) REFERENCES suggestions (id),
+        UNIQUE(suggestionId, userId)
+      )`,
+      `CREATE TABLE IF NOT EXISTS staff_votes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        suggestionId INTEGER,
+        userId TEXT,
+        vote TEXT,
+        FOREIGN KEY (suggestionId) REFERENCES suggestions (id),
+        UNIQUE(suggestionId, userId)
+      )`,
+      `CREATE TABLE IF NOT EXISTS roster (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channelId TEXT NOT NULL,
+        userId TEXT NOT NULL,
+        username TEXT NOT NULL,
+        timeSlot TEXT NOT NULL,
+        roleType TEXT NOT NULL,
+        date TEXT NOT NULL,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(channelId, timeSlot, userId)
+      )`,
+      `CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        channelId TEXT NOT NULL,
+        timeSlot TEXT NOT NULL,
+        date TEXT NOT NULL,
+        sent BOOLEAN DEFAULT FALSE,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS checkins (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId TEXT NOT NULL,
+        timeSlot TEXT NOT NULL,
+        date TEXT NOT NULL,
+        checkedInAt DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`
+    ];
 
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    logger.error(`Unhandled Rejection: ${reason.stack || reason}`);
-});
+    let completed = 0;
+    queries.forEach((query, index) => {
+      db.run(query, (err) => {
+        if (err) {
+          logger.error(`Error creating table ${index}:`, err);
+          reject(err);
+          return;
+        }
+
+        completed++;
+        if (completed === queries.length) {
+          logger.info('All database tables created successfully');
+          resolve();
+        }
+      });
+    });
+  });
+}
+
+function getDatabase() {
+  return db;
+}
+
+module.exports = {
+  init,
+  getDatabase
+};
