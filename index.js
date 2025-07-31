@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const { Client, Collection, GatewayIntentBits } = require('discord.js');
-const { token } = require('./config.json');
 const logger = require('./utils/logger');
 const db = require('./database/init'); // ✅ Add DB init
 
